@@ -265,7 +265,7 @@ int main(void)
 
     // server ACK behavior:
     //  n: No ACK delay 
-    //  y: ACK delayed 5 sec on 1st packet (segment 0)
+    //  y: ACK delayed 10 sec on 1st packet (segment 0)
     printf("Delay ACK on segment 0?: (y/n) ");
     gets(cmd);
     
@@ -308,12 +308,17 @@ int main(void)
 	    }
 
         // delay packet 5 sec if cmd == 1 and segment 0
+        printf("cmd: %s\n", (const char *)cmd);
+        printf("resp_buf[5]: %02x resp_buf[7]: %02x\n",
+            (unsigned char)resp_buf[5], (unsigned char)resp_buf[7]);
 	    if (strcmp((const char *)cmd, "y") == 0 &&
-	            ((unsigned char)resp_buf[5] == 0x00 ||
-	            (unsigned char)resp_buf[7] == 0x00))
+	            (
+	                (unsigned char)resp_buf[5] == 0x00 || (unsigned char)resp_buf[7] == 0x00
+	           )
+	       )
 	   {
-	        printf("Sleeping 5 seconds before ACK for segment 0...\n");
-	        sleep(5);
+	        printf("Sleeping 10 seconds before ACK for segment 0...\n");
+	        sleep(10);
 	    }
 	    
         // now reply to the client with the resp_buf (ACK or REJECT)

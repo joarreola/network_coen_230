@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 #define SERVER "127.0.0.1"
 #define BUFLEN 109  //Max length of buffer was 512
@@ -19,7 +20,7 @@
 #define DATAPKTHEADER 7
 #define ACKBUFLEN 8
 #define REJECTBUFLEN 10
-#define TIMEOUT 5
+#define TIMEOUT 3
 #define TENBYTES 10
 #define TWENTYTHREEBYTES 23
 
@@ -34,6 +35,9 @@ int dup_err = 0;
 int end_error = 0;
 int length_err = 0;
 int end_id_index = 0;
+struct sockaddr_in si_other;
+int slen=sizeof(si_other);
+pthread_t thread;
 
 void die(char *s)
 {
@@ -225,6 +229,18 @@ void sighdlr()
     now = time( NULL );
     localtime_r( &now, &tm );
     printf("sighdlr - %02d:%02d:%02d\n", tm.tm_hour, tm.tm_min, tm.tm_sec );
+    printf("sighdlr - pthread_cancel\n");
+    pthread_cancel(thread);
+}
+
+void *dowork()
+{
+    //try to receive some data, this is a blocking call
+    printf("waiting for reply...\n");
+    if (recvfrom(s, buf, REJECTBUFLEN, 0, (struct sockaddr *) &si_other, &slen) == -1)
+    {
+        die("recvfrom()");
+    }
 }
 
 /*
@@ -279,12 +295,14 @@ void inject_error(int segment_number) {
 
 int main(void)
 {
-    struct sockaddr_in si_other;
-    int i, slen=sizeof(si_other);
+    //struct sockaddr_in si_other;
+    int i;
+    //int slen=sizeof(si_other);
     char cmd[BUFLEN];
     int ret = 0x00;
     int start;
     int send_retry = 0;
+    char *thread_data;
 
     // ack_timer setup
     signal( SIGALRM, sighdlr );
@@ -363,17 +381,23 @@ int main(void)
         //receive a reply and print it
         //clear the buffer by filling null, it might have previously received data
         memset(buf,'\0', REJECTBUFLEN);
-
+/////
         // start itimer
         setitimer( ITIMER_REAL, &itv, NULL );
         
-        //try to receive some data, this is a blocking call
-        printf("waiting for reply...\n");
-        if (recvfrom(s, buf, REJECTBUFLEN, 0, (struct sockaddr *) &si_other, &slen) == -1)
+        // call recvfrom() in dowork()
+        printf("-pre pthread_create\n");
+        if(pthread_create(&thread, NULL, dowork, NULL) != 0)
         {
-            die("recvfrom()");
+            die("pthread_create()");
         }
-    
+
+        //If the target thread was canceled, then PTHREAD_CANCELED is placed in *retval.
+        void *retval;
+        pthread_join(thread, &retval);
+        //printf("-post pthread_join - retval: %d\n", (int)retval);
+        printf("-post pthread_join\n");
+ 
         // print reply packet
 	    print_header(buf, REJECTBUFLEN, "Reply Packet:");
 	    
@@ -388,7 +412,7 @@ int main(void)
 	            continue;
 	   
 	        } else {
-	            printf("Exceded re-send limit. Exiting\n");
+	            printf("Server does not respond\n");
 	            break;
 	        }
 	    }
