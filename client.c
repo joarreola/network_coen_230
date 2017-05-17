@@ -295,7 +295,7 @@ void inject_error(int segment_number) {
     }
 }
 
-void reset_server() {
+void reset_client() {
     segment_number = 0x00;
     seq_error = 0;
     dup_err = 0;
@@ -505,14 +505,14 @@ NEW_SESSION:
     else if (strcmp((const char *)cmd, "g") == 0)
     {
         printf("Sending 5 Good packets..\n");
-        reset_server();
+        reset_client();
 
         goto NEW_SESSION;
     }
     else if (strcmp((const char *)cmd, "b") == 0)
     {
         printf("Sending 1 Good  and 4 Bad packets..\n");
-        reset_server();
+        reset_client();
 
         goto NEW_SESSION;
     }

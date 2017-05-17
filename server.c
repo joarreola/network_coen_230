@@ -22,6 +22,7 @@ int next_segment_number = 0x00;
 int prev_segment_number = 0x00;
 char received_segments[10];
 int seg_index = 0;
+int packets_received = 0;
 
 void die(char *s)
 {
@@ -238,6 +239,14 @@ PACK_RESP_BUF:
     return(invalid_packet | reject_code);
 }
 
+void reset_server() {
+    packets_received = 0;
+    memset(received_segments,'\0', 10);
+    next_segment_number = 0x00;
+    prev_segment_number = 0x00;
+    seg_index = 0;
+}
+
 int main(void)
 {
     struct sockaddr_in si_me, si_other;
@@ -246,8 +255,7 @@ int main(void)
     int start = 0;
     char cmd[1];
     int packet_length = 0;
-    int packets_received = 0;
-     
+
     //create a UDP socket
     if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
     {
@@ -309,12 +317,8 @@ int main(void)
 	    int ret = check_packet(buf, resp_buf);
 	   
 	    if (ret == EXIT) {
-	        packets_received = 0;
-	        memset(received_segments,'\0', 10);
-	        next_segment_number = 0x00;
-            prev_segment_number = 0x00;
-            seg_index = 0;
 	        printf("Reseting server state\n");
+	        reset_server();
 	        
 	        goto NO_REPLAY;
 	    }
