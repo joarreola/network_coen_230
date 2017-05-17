@@ -51,12 +51,12 @@ static int setup_socket(struct ring *ring, char *netdev)
 {
 	int err, i, fd, v = TPACKET_V3;
 	struct sockaddr_ll ll;
-	//unsigned int blocksiz = 1 << 22, framesiz = 1 << 11;
-	unsigned int blocksiz = 1 << 12;
-	unsigned int framesiz = 1 << 9;
+	unsigned int blocksiz = 1 << 22, framesiz = 1 << 11;
+	//unsigned int blocksiz = 1 << 12;
+	//unsigned int framesiz = 1 << 9;
 	//unsigned int framesiz = 0x110;
-	//unsigned int blocknum = 64;
-	unsigned int blocknum = 32;
+	unsigned int blocknum = 128;
+	//unsigned int blocknum = 32;
 // was SOCK_RAW
 // wasETH_P_ALL
 	fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));

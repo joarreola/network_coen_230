@@ -13,6 +13,7 @@
 #define ACKBUFLEN 8
 #define REJECTBUFLEN 10
 #define PORT 8888   //The port on which to listen for incoming data
+#define EXIT 0xff
 
 // globals
 char buf[BUFLEN];
@@ -49,6 +50,7 @@ void print_header(char buf[], int header_length, char *title)
  *          DATA:       0xFFF1
  *          ACK:        0xFFF2
  *          REJECT:     0xFFF3
+ *          EXIT:       0xFFFF
  *      For DATA Type:
  *          sent segment:   0x01    // ex: for 1st segment
  *          data length:    0xFF    // for 255 data bytes
@@ -117,6 +119,14 @@ static int check_packet(char buf[], char resp_buf[])
         printf("Error - Client ID not 0x0a\n: buf[2]: %02x\n", (unsigned char)buf[2]);
         invalid_packet = 1;
     }
+    // check if EXIT packet
+    if ((unsigned char)buf[3] == 0xff && (unsigned char)buf[4] == EXIT)
+    {
+        printf("Exit Packet type\n");
+
+        return(EXIT);
+    }
+    
     // check packet type
     if ((unsigned char)buf[3] != 0xff && (unsigned char)buf[4] != 0xf1)
     {
@@ -138,7 +148,7 @@ static int check_packet(char buf[], char resp_buf[])
     {
         if (received_segments[i] == (unsigned char)buf[5])
         {
-            //printf("Packet already received: segment: %02x\n", (unsigned char)buf[5]);
+            printf("Packet already received: segment: %02x\n", (unsigned char)buf[5]);
             already_received = 1;
         }
     }
@@ -296,7 +306,20 @@ int main(void)
 
 	    // inspect the packet
 	    memset(resp_buf,'\0', REJECTBUFLEN);
-	    if ((check_packet(buf, resp_buf)) != 0)
+	    int ret = check_packet(buf, resp_buf);
+	   
+	    if (ret == EXIT) {
+	        packets_received = 0;
+	        memset(received_segments,'\0', 10);
+	        next_segment_number = 0x00;
+            prev_segment_number = 0x00;
+            seg_index = 0;
+	        printf("Reseting server state\n");
+	        
+	        goto NO_REPLAY;
+	    }
+	    
+	    if (ret != 0)
 	    {
 	        //printf("check_packet did not detect data packet or found errors in packet.\n");
 	        packet_length = REJECTBUFLEN;
@@ -327,11 +350,8 @@ int main(void)
             die("sendto()");
         }
 
-        // reset received_segments[] and packets_received for assgnmt 2, or rerun
-        //if(packets_received == 6) {
-        //    packets_received = 0;
-        //    memset(received_segments,'\0', 10);
-        //}
+NO_REPLAY:
+        printf("\n");
     }
  
     close(s);

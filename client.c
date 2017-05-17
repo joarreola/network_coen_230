@@ -23,6 +23,7 @@
 #define TIMEOUT 3
 #define TENBYTES 10
 #define TWENTYTHREEBYTES 23
+#define EXIT 0xff
 
 // globals
 int segment_number = 0x00;
@@ -66,6 +67,7 @@ static void print_header(char buf[], int header_length, char *title)
  *          DATA:       0xFFF1
  *          ACK:        0xFFF2
  *          REJECT:     0xFFF3
+ *          EXIT:       0xFFFF
  *      For DATA Type:
  *          sent segment:   0x01    // ex: for 1st segment
  *          data length:    0xFF    // for 255 data bytes
@@ -228,8 +230,8 @@ void sighdlr()
     //printf("sighdlr called - s: %d\n", s);
     now = time( NULL );
     localtime_r( &now, &tm );
-    printf("sighdlr - %02d:%02d:%02d\n", tm.tm_hour, tm.tm_min, tm.tm_sec );
-    printf("sighdlr - pthread_cancel\n");
+    //printf("\nsighdlr - %02d:%02d:%02d\n", tm.tm_hour, tm.tm_min, tm.tm_sec );
+    //printf("\nsighdlr - pthread_cancel\n");
     pthread_cancel(thread);
 }
 
@@ -353,9 +355,13 @@ int main(void)
         printf("Sending 1 Good  and 4 Bad packets..\n");
         printf("=======================================\n");
     }
-    
+
+NEW_SESSION:
     while(1)
     {
+        // sleep
+        sleep(1);
+        
         if (segment_number > 0x04) {
             printf("Stop sending packets.\n");
             break;
@@ -381,7 +387,7 @@ int main(void)
         //receive a reply and print it
         //clear the buffer by filling null, it might have previously received data
         memset(buf,'\0', REJECTBUFLEN);
-/////
+
         // start itimer
         setitimer( ITIMER_REAL, &itv, NULL );
         
@@ -465,7 +471,52 @@ int main(void)
 	    segment_number++;
 
     }
- 
+    
+    // send a final EXIT packet to reset the server
+    memset(message,'\0', BUFLEN);
+    segment_number = 0x00;
+    make_data_packet(client_id, segment_number, TWENTYTHREEBYTES, message);
+    message[5] = segment_number;
+    message[4] = EXIT;
+    printf("sending exit packet...\n");
+    if (sendto(s, message, BUFLEN , 0 , (struct sockaddr *) &si_other, slen)==-1)
+    {
+        die("sendto()");
+    }
+    
+    // ask user
+    printf("\nNew Session?: (g/b/n) ");
+    gets(cmd);
+    if (strcmp((const char *)cmd, "n") == 0)
+    {
+        printf("Terminating client\n");
+        exit(0);
+    }
+    else if (strcmp((const char *)cmd, "g") == 0)
+    {
+        printf("Sending 5 Good packets..\n");
+        segment_number = 0x00;
+        seq_error = 0;
+        dup_err = 0;
+        end_error = 0;
+        length_err = 0;
+        end_id_index = 0;
+
+        goto NEW_SESSION;
+    }
+    else if (strcmp((const char *)cmd, "b") == 0)
+    {
+        printf("Sending 1 Good  and 4 Bad packets..\n");
+        segment_number = 0x00;
+        seq_error = 0;
+        dup_err = 0;
+        end_error = 0;
+        length_err = 0;
+        end_id_index = 0;
+
+        goto NEW_SESSION;
+    }
+
     close(s);
     return 0;
 }
