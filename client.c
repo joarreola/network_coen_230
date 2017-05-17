@@ -295,6 +295,15 @@ void inject_error(int segment_number) {
     }
 }
 
+void reset_server() {
+    segment_number = 0x00;
+    seq_error = 0;
+    dup_err = 0;
+    end_error = 0;
+    length_err = 0;
+    end_id_index = 0;
+}
+
 int main(void)
 {
     //struct sockaddr_in si_other;
@@ -490,29 +499,20 @@ NEW_SESSION:
     if (strcmp((const char *)cmd, "n") == 0)
     {
         printf("Terminating client\n");
+        
         exit(0);
     }
     else if (strcmp((const char *)cmd, "g") == 0)
     {
         printf("Sending 5 Good packets..\n");
-        segment_number = 0x00;
-        seq_error = 0;
-        dup_err = 0;
-        end_error = 0;
-        length_err = 0;
-        end_id_index = 0;
+        reset_server();
 
         goto NEW_SESSION;
     }
     else if (strcmp((const char *)cmd, "b") == 0)
     {
         printf("Sending 1 Good  and 4 Bad packets..\n");
-        segment_number = 0x00;
-        seq_error = 0;
-        dup_err = 0;
-        end_error = 0;
-        length_err = 0;
-        end_id_index = 0;
+        reset_server();
 
         goto NEW_SESSION;
     }
