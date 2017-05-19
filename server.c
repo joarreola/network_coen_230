@@ -10,8 +10,8 @@
  
 #define BUFLEN 264  //Max length of buffer was 512
 #define DATAPKTHEADER 7
-#define ACKBUFLEN 8
-#define REJECTBUFLEN 10
+#define ACKBUFLEN 14
+#define REJECTBUFLEN 14
 #define PORT 8888   //The port on which to listen for incoming data
 #define EXIT 0xff
 
@@ -51,6 +51,7 @@ void print_header(char buf[], int header_length, char *title)
  *          DATA:       0xFFF1
  *          ACK:        0xFFF2
  *          REJECT:     0xFFF3
+ *          ACCESS:     0xFFF8
  *          EXIT:       0xFFFF
  *      For DATA Type:
  *          sent segment:   0x01    // ex: for 1st segment
@@ -71,6 +72,7 @@ static int check_packet(char buf[], char resp_buf[])
 {
     int invalid_packet = 0;
     int data_packet = 0;
+    int access_packet = 0;
     int length;
     int start = 0;
     int i = 0;
@@ -80,11 +82,13 @@ static int check_packet(char buf[], char resp_buf[])
     int verified_length = 0x00;
 
     // for end iD checking
+    // do only for a DATA packet
     length = (unsigned char)buf[6];
     int end_first = length + 7;
     int end_second = length + 7 + 1;
 
     // compute actual payload length
+    // do only for a data packet
     i = 7;
     while ( 1 )
     {
@@ -101,11 +105,15 @@ static int check_packet(char buf[], char resp_buf[])
     
     // check if valid length (< 264 -9)
     // reset end_first and end_second
+    // do only for a DATA packet
     if (verified_length <= (BUFLEN - 9)) {
         end_first = verified_length + 7;
         end_second = verified_length + 7 + 1;
     }
     
+    /*
+     * DO FOR BOTH DATA AN ACCESS PACKETS
+     */
     // check header: start[0-1], client[2], type[3-4]
     // check start id
     if ((unsigned char)buf[0] != 0xff && (unsigned char)buf[1] != 0xff)
@@ -134,15 +142,21 @@ static int check_packet(char buf[], char resp_buf[])
         printf("Error - Packet type not DATA 0xfff1: buf[3]: %02x  buf[4]: %02x\n",
             (unsigned char)buf[3], (unsigned char)buf[4]);
         invalid_packet = 1;
-    } else {
+    } else if ((unsigned char)buf[3] == 0xff && (unsigned char)buf[4] == 0xf1) {
         //printf("Packet type: DATA\n");
         data_packet = 1;
+    } else if ((unsigned char)buf[3] == 0xff && (unsigned char)buf[4] == 0xf8) {
+        printf("Packet type: ACCESS\n");
+        access_packet = 1;
     }
 
-    // GOTO resp_buf packing IF NOT A DATA PACKET
+    // GOTO resp_buf packing IF NOT A DATA or ACCESS PACKET
     // reject_code will be 0x00
     if (invalid_packet) { goto PACK_RESP_BUF; }
     
+    /*
+     * START OF FOR DATA PACKET ONLY
+     */
     // have a good data packet header, so far
     // check segment in received_segments
     for (i=0; i<seg_index; i++)
@@ -185,7 +199,7 @@ static int check_packet(char buf[], char resp_buf[])
         //invalid_packet = 1;
         reject_code = 0xf6;
     }
-    else if ((unsigned char)buf[6] != verified_length)
+    else if (data_packet && (unsigned char)buf[6] != verified_length)
     {
         printf("Error - Detected length mismatch: length field: %02x verified length: %02x\n",
             (unsigned char)buf[6], verified_length);
@@ -204,10 +218,14 @@ static int check_packet(char buf[], char resp_buf[])
         // add to the received_segments[]
         received_segments[seg_index++] = (unsigned char)buf[5];
     }
+    /*
+     * END OF FOR DATA PACKET ONLY
+     */
+     
+    /*
+     * START OF FOR ACCESS PACKET ONLY
+     */
 
-    // check ACK header: seg[1]
-    
-    // check REJECT header: subcode[2]
     
 PACK_RESP_BUF:
     // compose resp_buf
@@ -224,7 +242,7 @@ PACK_RESP_BUF:
 	    resp_buf[7] = buf[5];   // segment
 	    resp_buf[8] = 0xff;     // packet end
 	    resp_buf[9] = 0xff;     // pad
-    } else {
+    } else if (data_packet) {
         // ACK packet
         resp_buf[0] = 0xff;     // packet start id
 	    resp_buf[1] = 0xff;
@@ -234,6 +252,21 @@ PACK_RESP_BUF:
 	    resp_buf[5] = buf[5];   // seg no
 	    resp_buf[6] = 0xff;     // packet end
 	    resp_buf[7] = 0xff;
+    }  else if (access_packet) {
+        resp_buf[0] = 0xff;     // packet start id
+	    resp_buf[1] = 0xff;
+	    resp_buf[2] = buf[2];   // client id
+	    resp_buf[3] = 0xff;     // acc_OK
+	    resp_buf[4] = 0xfb; 
+	    resp_buf[5] = buf[5];   // seg no
+	    resp_buf[6] = 0x05;     // length of tech + subscriber number
+	    resp_buf[7] = buf[7];   // technology
+	    resp_buf[8] = buf[8];   // subscriber number
+	    resp_buf[9] = buf[9];
+	    resp_buf[10] = buf[10];
+	    resp_buf[11] = buf[11];
+	    resp_buf[12] = 0xff;    // end id
+	    resp_buf[13] = 0xff;
     }
 
     return(invalid_packet | reject_code);

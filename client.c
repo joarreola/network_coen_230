@@ -19,7 +19,7 @@
 #define SENDRETRYS 3
 #define DATAPKTHEADER 7
 #define ACKBUFLEN 8
-#define REJECTBUFLEN 10
+#define REJECTBUFLEN 14
 #define TIMEOUT 3
 #define TENBYTES 10
 #define TWENTYTHREEBYTES 23
@@ -68,29 +68,37 @@ static void print_header(char buf[], int header_length, char *title)
  *      client id:      0x0a    // for example
  *      Pkt types:
  *          DATA:       0xFFF1
- *          ACK:        0xFFF2
- *          REJECT:     0xFFF3
+ *              ACK:        0xFFF2
+ *              REJECT:     0xFFF3
+ *          ACCESS ACK_OK: 0xFFb
  *          EXIT:       0xFFFF
  *      For DATA Type:
  *          sent segment:   0x01    // ex: for 1st segment
  *          data length:    0xFF    // for 255 data bytes
  *          payload:        0xNN bytes // using "dd" for data
- *      For ACK Type:
+ *      For DATA ACK Type:
  *          rcvd segment:   0x01    // ex: for 1st segment
- *      For REJECT Type:
+ *      For DATA REJECT Type:
  *          Reject subcode: 
  *              out of sequence:    0xFFF4
  *              length misatch:     0xFFF5
  *              end id missing:     0xFFF6
  *              duplicate packet:   0xFFF7
  *          rcvd segment:   0X01    // ex: for 1st segment
+ *      For ACCESS AC_OK Type:
+ *          rcvd segment:   0x01    // ex: for 1st segment
+ *          length:         0x05
+ *          technology:     0x02    // for 2 G
+ *          phone number:   0xFFFFFFFF // hard code
  *      end id:         0xFFFF
  */
 static int check_packet(char buf[])
 {
     int invalid_packet = 0x00;
-    int ack_packet = 0;
-    int reject_packet = 0;
+    int data_ack_packet = 0;
+    int access_ack_packet = 0;
+    int data_reject_packet = 0;
+    int access_reject_packet = 0;
     int length;
     int start = 0;
     int i = 0;
@@ -124,20 +132,30 @@ static int check_packet(char buf[])
         if ((unsigned char)buf[4] == 0xf2)
         {
             printf("check_packet - Packet type: ACK\n");
-            ack_packet = 1;
+            data_ack_packet = 1;
             reject_subcode = 0x00;
         }
+        else if ((unsigned char)buf[4] == 0xf6)
+        {
+            printf("check_packet - Packet type: ACCESS ACK_OK\n");
+            access_ack_packet = 1;
+            reject_subcode = 0x00;
+        }
+
         if ((unsigned char)buf[4] == 0xf3)
         {
             //printf("check_packet - Packet type: REJECT\n");
             invalid_packet = 0x10;
-            //printf("check_packet - setting reject_packet after Packet type: REJECT\n");
-            reject_packet = 1;
+            //printf("check_packet - setting data_reject_packet after Packet type: REJECT\n");
+            data_reject_packet = 1;
         }
     }
 
+    /*
+     * START OF DATA PACKET ONLY
+     */
     // check ACK header: seg[5]
-    if (ack_packet && (unsigned char)buf[5] != segment_number)
+    if (data_ack_packet && (unsigned char)buf[5] != segment_number)
     {
         printf("check_packet - ACK packet segment not %02x buf[5]: %02x\n",
             segment_number, (unsigned char)buf[5]);
@@ -145,7 +163,7 @@ static int check_packet(char buf[])
     }
     
     // check end id[2]
-    if (ack_packet && (unsigned char)buf[6] != 0xff &&
+    if (data_ack_packet && (unsigned char)buf[6] != 0xff &&
         (unsigned char)buf[6] != 0xff)
     {
         printf("End of Packet Id not 0xffff: buf[6]: %02x\n",
@@ -154,7 +172,7 @@ static int check_packet(char buf[])
     }
 
     // check REJECT header: subcode[5-6]
-    if (reject_packet && ((unsigned char)buf[5] != 0xff &&
+    if (data_reject_packet && ((unsigned char)buf[5] != 0xff &&
         ((unsigned char)buf[6] < 0xf4) || (unsigned char)buf[6] > 0xf7))
     {
         printf("check_packet - Invalid Reject Sub-code: buf[5]: %02x buf[6]: %02x\n",
@@ -162,7 +180,7 @@ static int check_packet(char buf[])
         invalid_packet = 0x10;
 
     }
-    else if (reject_packet && (unsigned char)buf[5] == 0xff &&
+    else if (data_reject_packet && (unsigned char)buf[5] == 0xff &&
         ((unsigned char)buf[6] > 0xf43) || (unsigned char)buf[6] < 0xf8)
     {
         // check sub codes
@@ -187,6 +205,57 @@ static int check_packet(char buf[])
             reject_subcode = 0x07;
         }
     }
+    goto END;
+    /*
+     * END OF DATA PACKET ONLY
+     */
+
+
+    /*
+     * START OF ACCESS ACK_OK PACKET ONLY
+     */
+    // check ACK header: seg[5]
+    if (access_ack_packet && (unsigned char)buf[5] != segment_number)
+    {
+        printf("check_packet - ACK packet segment not %02x buf[5]: %02x\n",
+            segment_number, (unsigned char)buf[5]);
+        invalid_packet = 0x10;
+    }
+    
+    // check length is 0x05
+    if (access_ack_packet && (unsigned char)buf[6] != 0x05)
+    {
+        printf("Length is not  0x05: buf[6]: %02x\n",
+            (unsigned char)buf[6]);
+        invalid_packet = 0x10;
+    }
+
+    // check technology: 0x02 for 2G
+    if (access_ack_packet && (unsigned char)buf[7] != 0x05)
+    {
+        printf("Technology is not  0x02: buf[7]: %02x\n",
+            (unsigned char)buf[7]);
+        invalid_packet = 0x10;
+    }
+    
+    // check subscriber number: 0xffffffff
+    if (access_ack_packet &&
+        (
+            (unsigned char)buf[8] != 0xFF &&
+            (unsigned char)buf[9] != 0xFF &&
+            (unsigned char)buf[10] != 0xFF &&
+            (unsigned char)buf[11] != 0xFF)
+        )
+    {
+        printf("Subscriber number is not  0xFF: buf[8]: %02x\n",
+            (unsigned char)buf[8]);
+        invalid_packet = 0x10;
+    }
+   /*
+    * END OF DATA PACKET ONLY
+    */
+
+END:
     ret = invalid_packet | reject_subcode;
 
     return(ret);
@@ -231,7 +300,7 @@ static void make_data_packet(int client_id, int segment_number,
  *      client id:      0x0a        // for example
  *      acc_per:        0xFFF8
  *      segment:        0x01        // ex: for 2nd segment
- *      data length:    0xFF        // for 255 data bytes
+ *      data length:    0x05        // 
  *      technology:
  *          2G:         02
  *          3G:         03
@@ -243,26 +312,20 @@ static void make_data_packet(int client_id, int segment_number,
 static void make_access_packet(int client_id, int segment_number,
     int technology, char sub_number[], char message[])
 {
-    char hexnumber[4];
     
-    // convert sub_number: 4294967295 to hex
-    //printf("sub_number: %x\n", (const char *)sub_number[0]);
-    //hexnumber[0] = (const char)sub_number;
-    //printf("hexnumber: %x\n", (const char *)hexnumber);
-    
-    // make a DATA packet
+    // make an ACCESS packet
     message[0] = 0xff; // packet start id
     message[1] = 0xff;
     message[2] = client_id; // client id
     message[3] = 0xFF;  // acc_per packet type
     message[4] = 0xF8;
     message[5] = segment_number; // seg no
-    message[6] = 0x05; // technology + subscriber number
-    message[7] = technology;
-    message[8] = 0xFF;
-    message[9] = 0xFF;
-    message[10] = 0xFF;
-    message[11] = 0xFF;
+    message[6] = 0x05;      // length
+    message[7] = technology;  // technology
+    message[8] = sub_number[0];      // number
+    message[9] = sub_number[1];
+    message[10] = sub_number[2];
+    message[11] = sub_number[3];
     message[12] = 0xFF; // end id
     message[13] = 0xFF;
 }
@@ -373,6 +436,7 @@ int main(void)
     int start;
     int send_retry = 0;
     char *thread_data;
+    int stop_on;
 
     // ack_timer setup
     signal( SIGALRM, sighdlr );
@@ -423,10 +487,12 @@ int main(void)
     else if (strcmp((const char *)cmd, "g") == 0)
     {
         printf("Sending 5 Good packets..\n");
+        stop_on = 0x04;
     }
     else if (strcmp((const char *)cmd, "b") == 0)
     {
         printf("Sending 1 Good and 4 Bad packets..\n");
+        stop_on = 0x04;
     }
     else if (strcmp((const char *)cmd, "a") == 0)
     {
@@ -435,6 +501,8 @@ int main(void)
         printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n");
         
         gets(access);
+        
+        stop_on = 0x00;
     }
 
     /*
@@ -445,18 +513,20 @@ NEW_SESSION:
     while(1)
     {
         // sleep
-        sleep(1);
-        
-        if (segment_number > 0x04)
+        sleep(2);
+
+        // 0x04 for DATA, 0x00 for ACCESS
+        if (segment_number > stop_on)
         {
             printf("Stop sending packets.\n");
             break;
         }
         
-        printf("cmd: %s\n", (const char *)cmd);
-        printf("access: %s\n", (const char *)access);
+
         if (strcmp((const char *)cmd, "g") == 0 || strcmp((const char *)cmd, "b") == 0)
         {
+            stop_on = 0x04;
+
             // make a DATA packet
             memset(message,'\0', BUFLEN);
 	        make_data_packet(client_id, segment_number, TWENTYTHREEBYTES, message);
@@ -472,6 +542,8 @@ NEW_SESSION:
         }
         else
         {
+            stop_on = 0x00;
+
             // make an ACCESS packet
             memset(message,'\0', BUFLEN);
             technology = 02;
@@ -480,12 +552,10 @@ NEW_SESSION:
             sub_number[1] = 0xFF;
             sub_number[2] = 0xFF;
             sub_number[3] = 0xFF;
-            //static void make_access_packet(int client_id, int segment_number,
-            //  int technology, int sub_number, char message[])
+            
 	        make_access_packet(client_id, segment_number, technology,
 	            sub_number, message);
-	        printf(" maked access packet\n");
-	  
+
 	        // inject an access packet error based on user input
 	        if (strcmp((const char *)access, "1") == 0 ||
 	            strcmp((const char *)access, "2") == 0 ||
@@ -578,11 +648,11 @@ NEW_SESSION:
 	 
 	    if ((ret & 0x0f) == 0x00)
 	    {
-	        //printf("post check_packet - ACK Packet\n");
+	        printf("post check_packet - ACK Packet\n");
 	    }
 	    else
 	    {
-	        //printf("post check_packet - REJECT Packet\n");
+	        printf("post check_packet - REJECT Packet\n");
 	    }
 	    
 	    /*
