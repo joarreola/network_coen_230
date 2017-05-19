@@ -89,7 +89,7 @@ static void print_header(char buf[], int header_length, char *title)
  *          rcvd segment:   0x01    // ex: for 1st segment
  *          length:         0x05
  *          technology:     0x02    // for 2 G
- *          phone number:   0xFFFFFFFF // hard code
+ *          phone number:   0xFFFFFFFF // 3 numbers
  *      end id:         0xFFFF
  */
 static int check_packet(char buf[])
@@ -437,6 +437,7 @@ int main(void)
     int send_retry = 0;
     char *thread_data;
     int stop_on;
+    int access_packet = 0;
 
     // ack_timer setup
     signal( SIGALRM, sighdlr );
@@ -469,12 +470,16 @@ int main(void)
      *      g: send 5 good packets
      *      b: send 1 good and 4 bad
      *      a: show the Access Menu
+     *          0: good subscriber
+     *          1: Subscriber has not payed
+     *          2: Subscriber number not found
+     *          3: Technology mismatch
      *      n: exit
      */
     memset(cmd,'\0', 1);
     memset(access,'\0', 1);
     printf("Send packets to server?: (g/b/a/n) ");
-    printf("\n\tg: 5 good packets\n\tb: 1 good 4 bad packets\n\ta: access menu\n\tn: exit client\n");
+    printf("\n\tg: 5 good packets\n\tb: 1 good 4 bad packets\n\ta: access menu\n\tn: exit client\n\t");
 
     gets(cmd);
     
@@ -498,11 +503,12 @@ int main(void)
     {
         printf("\tAccess Menu: (0/1/2/3) \n");
         
-        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n");
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t");
         
         gets(access);
         
         stop_on = 0x00;
+        access_packet = 1;
     }
 
     /*
@@ -537,33 +543,66 @@ NEW_SESSION:
 	            inject_data_error(segment_number);
 	        }
 	        
+	        printf("------------------------------------------------\n");
 	        printf("Sending packet segment: %02x\n", message[5]);
 	        print_header(message, (TWENTYTHREEBYTES + 9), "Data Packet:\n");
         }
         else
         {
             stop_on = 0x00;
-
-            // make an ACCESS packet
+            printf("------------------------------------------------\n");
+            if (strcmp((const char *)access, "0") == 0)
+            {
+                // Good Subscriber
+                // 408-680-8821 - paid
+                printf("ACCESS - good subscriber case\n");
+                technology = 02;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x97;
+                sub_number[2] = 0xC0;
+                sub_number[3] = 0xF5;
+            }
+	        else if (strcmp((const char *)access, "1") == 0)
+	        {
+	            // Subscriber has not payed
+	            // 408-666-8821 - not paid
+	            printf("ACCESS - Subscriber not paid case\n");
+	            technology = 03;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x95;
+                sub_number[2] = 0x9E;
+                sub_number[3] = 0x15;
+	        }
+	        else if (strcmp((const char *)access, "2") == 0)
+	        {
+	            // Subscriber number not found
+	            // 408-554-9999 - paid
+	            printf("ACCESS - Subscriber number not found case\n");
+	            technology = 04;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x84;
+                sub_number[2] = 0x8B;
+                sub_number[3] = 0xAF;
+	        }
+	        else if (strcmp((const char *)access, "3") == 0)
+	        {
+	            //  Technology mismatch
+	            // 408-554-6805 - paid
+	            printf("ACCESS - Acc_Perm due to technology mismatch case\n");
+                technology = 02;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x84;
+                sub_number[2] = 0x7F;
+                sub_number[3] = 0x35;
+	        }
+	        
+	        // make an ACCESS packet
             memset(message,'\0', BUFLEN);
-            technology = 02;
-            //sub_number = 4294967295;
-            sub_number[0] = 0xFF;
-            sub_number[1] = 0xFF;
-            sub_number[2] = 0xFF;
-            sub_number[3] = 0xFF;
-            
+
 	        make_access_packet(client_id, segment_number, technology,
 	            sub_number, message);
 
-	        // inject an access packet error based on user input
-	        if (strcmp((const char *)access, "1") == 0 ||
-	            strcmp((const char *)access, "2") == 0 ||
-	            strcmp((const char *)access, "3") == 0)
-	        {
-	            //inject_access_error(access);
-	        }
-	        
+            printf("------------------------------------------------\n");
 	        printf("Sending packet segment: %02x\n", message[5]);
 	        print_header(message, FOURTEENBYTES, "Access Packet:\n");
         }
@@ -648,11 +687,33 @@ NEW_SESSION:
 	 
 	    if ((ret & 0x0f) == 0x00)
 	    {
-	        printf("post check_packet - ACK Packet\n");
+	        //printf("post check_packet - ACK Packet\n");
+	        
+	        // check access codes
+	        if ((unsigned char)buf[3] == 0xff &&
+	            (unsigned char)buf[4] == 0xfb)
+	        {
+	            printf("ACCESS REPLAY: Access_OK\n");
+	        }
+	        else if ((unsigned char)buf[3] == 0xff &&
+	            (unsigned char)buf[4] == 0xf9)
+	        {
+	            printf("ACCESS REPLAY: not paid\n");
+	        }
+	        else if ((unsigned char)buf[3] == 0xff &&
+	            (unsigned char)buf[4] == 0xf8)
+	        {
+	            printf("ACCESS REPLAY: technology mismatch\n");
+	        }
+	        else if ((unsigned char)buf[3] == 0xff &&
+	            (unsigned char)buf[4] == 0xfa)
+	        {
+	            printf("ACCESS REPLAY: number not found\n");
+	        }
 	    }
 	    else
 	    {
-	        printf("post check_packet - REJECT Packet\n");
+	        //printf("post check_packet - REJECT Packet\n");
 	    }
 	    
 	    /*
@@ -736,7 +797,7 @@ NEW_SESSION:
     {
         printf("\tAccess Menu: (0/1/2/3) \n");
         
-        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n");
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t");
         
         gets(access);
         

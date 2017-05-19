@@ -10,6 +10,7 @@
  
 #define BUFLEN 264  //Max length of buffer was 512
 #define DATAPKTHEADER 7
+#define ACCESSHEADER 14
 #define ACKBUFLEN 14
 #define REJECTBUFLEN 14
 #define PORT 8888   //The port on which to listen for incoming data
@@ -66,6 +67,11 @@ void print_header(char buf[], int header_length, char *title)
  *              end id missing:     0xFFF6
  *              duplicate packet:   0xFFF7
  *          rcvd segment:   0X01    // ex: for 1st segment
+ *      For ACCESS AC_OK Type:
+ *          rcvd segment:   0x01    // ex: for 1st segment
+ *          length:         0x05
+ *          technology:     0x02    // for 2 G
+ *          phone number:   0xFFFFFFFF // 3 numbers
  *      end id:         0xFFFF
  */
 static int check_packet(char buf[], char resp_buf[])
@@ -88,7 +94,7 @@ static int check_packet(char buf[], char resp_buf[])
     int end_second = length + 7 + 1;
 
     // compute actual payload length
-    // do only for a data packet
+    // needed only for a data packet
     i = 7;
     while ( 1 )
     {
@@ -105,14 +111,14 @@ static int check_packet(char buf[], char resp_buf[])
     
     // check if valid length (< 264 -9)
     // reset end_first and end_second
-    // do only for a DATA packet
+    // needed only for a DATA packet
     if (verified_length <= (BUFLEN - 9)) {
         end_first = verified_length + 7;
         end_second = verified_length + 7 + 1;
     }
     
     /*
-     * DO FOR BOTH DATA AN ACCESS PACKETS
+     * DO FOR BOTH DATA AND ACCESS PACKETS
      */
     // check header: start[0-1], client[2], type[3-4]
     // check start id
@@ -141,19 +147,26 @@ static int check_packet(char buf[], char resp_buf[])
     {
         printf("Error - Packet type not DATA 0xfff1: buf[3]: %02x  buf[4]: %02x\n",
             (unsigned char)buf[3], (unsigned char)buf[4]);
+
         invalid_packet = 1;
+        
+        // reject_code will be 0x00
+    
+        goto PACK_RESP_BUF;
+
     } else if ((unsigned char)buf[3] == 0xff && (unsigned char)buf[4] == 0xf1) {
         //printf("Packet type: DATA\n");
+
         data_packet = 1;
+
     } else if ((unsigned char)buf[3] == 0xff && (unsigned char)buf[4] == 0xf8) {
         printf("Packet type: ACCESS\n");
+print_header(buf, ACCESSHEADER, "Access Packet Header");
         access_packet = 1;
+        
+        goto ACCESS_PACKET;
     }
 
-    // GOTO resp_buf packing IF NOT A DATA or ACCESS PACKET
-    // reject_code will be 0x00
-    if (invalid_packet) { goto PACK_RESP_BUF; }
-    
     /*
      * START OF FOR DATA PACKET ONLY
      */
@@ -218,14 +231,65 @@ static int check_packet(char buf[], char resp_buf[])
         // add to the received_segments[]
         received_segments[seg_index++] = (unsigned char)buf[5];
     }
+    
+    goto PACK_RESP_BUF;
     /*
      * END OF FOR DATA PACKET ONLY
      */
      
     /*
      * START OF FOR ACCESS PACKET ONLY
+     * Rejection packets are made by checking the
+     * subscriber phone number and the technology per the
+     * Verification-Database.txt file:
+     *
+     *      408-554-6805    04      1
+     *      408-666-8821    03      0
+     *      408-680-8821    02      1
+     *
+     *      0xF3847F35      04      1 for case: tech mismatch - 3
+     *      0xF3959E15      03      0 for case: not paid - 1
+     *      0xF397C0F5      02      1 for case: paid - 0
      */
+ACCESS_PACKET:
+     // printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2:
+     //     Subscriber number not found\n\t\t3: Technology mismatch\n");
 
+    // check for a good subscriber
+    // return 0xFFFB packet for number 0xF397C0F5
+    if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x97 &&
+        (unsigned char)buf[10] == 0xC0 && (unsigned char)buf[11] == 0xF5)
+    {
+         // Good subscriber
+        printf("check_packet - ACCESS - good subscriber\n");
+        resp_buf[3] = 0xff;
+	    resp_buf[4] = 0xfb;
+    }
+    else if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x95 &&
+        (unsigned char)buf[10] == 0x9E && (unsigned char)buf[11] == 0x15)
+    {
+         // Not paid
+        printf("check_packet - ACCESS - not paid\n");
+        resp_buf[3] = 0xff;
+	    resp_buf[4] = 0xf9;
+    }
+    else if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x84 &&
+        (unsigned char)buf[10] == 0x7F && (unsigned char)buf[11] == 0x35 &&
+        (unsigned char)buf[7] != 04)
+    {
+        // tech mismatch
+        printf("check_packet - ACCESS - Acc_Perm due to technology mismatch\n");
+        resp_buf[3] = 0xff;
+	    resp_buf[4] = 0xf8; //?
+    }
+    else if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x84 &&
+        (unsigned char)buf[10] == 0x8B && (unsigned char)buf[11] == 0xAF)
+    {
+        // number not found
+        printf("check_packet - ACCESS - number not found\n");
+        resp_buf[3] = 0xff;
+	    resp_buf[4] = 0xfa;
+    }
     
 PACK_RESP_BUF:
     // compose resp_buf
@@ -256,8 +320,8 @@ PACK_RESP_BUF:
         resp_buf[0] = 0xff;     // packet start id
 	    resp_buf[1] = 0xff;
 	    resp_buf[2] = buf[2];   // client id
-	    resp_buf[3] = 0xff;     // acc_OK
-	    resp_buf[4] = 0xfb; 
+	    //resp_buf[3] = 0xff;     // acc_OK, not paid, not exist
+	    //resp_buf[4] = 0xfb; 
 	    resp_buf[5] = buf[5];   // seg no
 	    resp_buf[6] = 0x05;     // length of tech + subscriber number
 	    resp_buf[7] = buf[7];   // technology
@@ -324,6 +388,7 @@ int main(void)
     {
 
         printf("\nWaiting for data...\n");
+        printf("------------------------------------------------\n");
         fflush(stdout);
          
         //try to receive some data, this is a blocking call
@@ -340,7 +405,7 @@ int main(void)
         {
             continue;
         }
-        print_header(buf, DATAPKTHEADER, "Packet Header");
+        print_header(buf, ACCESSHEADER, "Packet Header");
 	    
 	    // count as a received packet
 	    packets_received++;
@@ -368,9 +433,9 @@ int main(void)
 	    }
 
         // delay packet 5 sec if cmd == 1 and segment 0
-        printf("cmd: %s\n", (const char *)cmd);
-        printf("resp_buf[5]: %02x resp_buf[7]: %02x\n",
-            (unsigned char)resp_buf[5], (unsigned char)resp_buf[7]);
+        //printf("cmd: %s\n", (const char *)cmd);
+        //printf("resp_buf[5]: %02x resp_buf[7]: %02x\n",
+        //    (unsigned char)resp_buf[5], (unsigned char)resp_buf[7]);
 	    if (strcmp((const char *)cmd, "y") == 0 &&
 	            (
 	                (unsigned char)resp_buf[5] == 0x00 || (unsigned char)resp_buf[7] == 0x00
@@ -388,7 +453,7 @@ int main(void)
         }
 
 NO_REPLAY:
-        printf("\n");
+        printf("\t");
     }
  
     close(s);
