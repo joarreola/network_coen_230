@@ -181,7 +181,7 @@ static int check_packet(char buf[])
 
     }
     else if (data_reject_packet && (unsigned char)buf[5] == 0xff &&
-        ((unsigned char)buf[6] > 0xf43) || (unsigned char)buf[6] < 0xf8)
+        ((unsigned char)buf[6] > 0xf3) || (unsigned char)buf[6] < 0xf8)
     {
         // check sub codes
         if ((unsigned char)buf[6] == 0xf4)
