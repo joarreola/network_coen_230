@@ -23,6 +23,7 @@
 #define TIMEOUT 3
 #define TENBYTES 10
 #define TWENTYTHREEBYTES 23
+#define FOURTEENBYTES 14
 #define EXIT 0xff
 
 // globals
@@ -39,6 +40,8 @@ int end_id_index = 0;
 struct sockaddr_in si_other;
 int slen=sizeof(si_other);
 pthread_t thread;
+char sub_number[4];
+int technology;
 
 void die(char *s)
 {
@@ -222,19 +225,78 @@ static void make_data_packet(int client_id, int segment_number,
     end_id_index = 7 + payload + 1;
 }
 
+/*
+ * ACCESS packet structure
+ *      start id:       0xFFFF
+ *      client id:      0x0a        // for example
+ *      acc_per:        0xFFF8
+ *      segment:        0x01        // ex: for 2nd segment
+ *      data length:    0xFF        // for 255 data bytes
+ *      technology:
+ *          2G:         02
+ *          3G:         03
+ *          4G:         04
+ *          5G:         05
+ *      subscriber #:   4294967295  // 4-bytes: hex of decimal number
+ *      end id:         0xFFFF
+ */
+static void make_access_packet(int client_id, int segment_number,
+    int technology, char sub_number[], char message[])
+{
+    char hexnumber[4];
+    
+    // convert sub_number: 4294967295 to hex
+    //printf("sub_number: %x\n", (const char *)sub_number[0]);
+    //hexnumber[0] = (const char)sub_number;
+    //printf("hexnumber: %x\n", (const char *)hexnumber);
+    
+    // make a DATA packet
+    message[0] = 0xff; // packet start id
+    message[1] = 0xff;
+    message[2] = client_id; // client id
+    message[3] = 0xFF;  // acc_per packet type
+    message[4] = 0xF8;
+    message[5] = segment_number; // seg no
+    message[6] = 0x05; // technology + subscriber number
+    message[7] = technology;
+    message[8] = 0xFF;
+    message[9] = 0xFF;
+    message[10] = 0xFF;
+    message[11] = 0xFF;
+    message[12] = 0xFF; // end id
+    message[13] = 0xFF;
+}
+
+/*
+ * Called by setitimer when count is down to 0
+ *  setitimer( ITIMER_REAL, &itv, NULL );
+ *
+ *  See the timer setup:
+ *      // ack_timer setup
+ *      signal( SIGALRM, sighdlr ); <<<<<<<
+ *      struct itimerval itv;
+ *      struct tm tm;
+ *      time_t now;
+ *      itv.it_value.tv_sec = TIMEOUT;
+ *      itv.it_value.tv_usec = 0;
+ *      itv.it_interval.tv_sec = 0;
+ *      itv.it_interval.tv_usec = 0;
+ *
+ */
 void sighdlr()
 {
     struct tm tm;
     time_t now;
 
-    //printf("sighdlr called - s: %d\n", s);
     now = time( NULL );
     localtime_r( &now, &tm );
-    //printf("\nsighdlr - %02d:%02d:%02d\n", tm.tm_hour, tm.tm_min, tm.tm_sec );
-    //printf("\nsighdlr - pthread_cancel\n");
     pthread_cancel(thread);
 }
 
+/*
+ * Runs in a pthread. Thread will be killed by signal handler
+ * if still alive when timer count expires.
+ */
 void *dowork()
 {
     //try to receive some data, this is a blocking call
@@ -246,7 +308,7 @@ void *dowork()
 }
 
 /*
- *  Inject errors per Assignment 1 requirements
+ *  Inject errors per Assignment 1 requirements, to a DATA packet
  *      1- out of sequence:
  *         if to send segment 1, change segment to 2
  *      2- missing end of packet id:
@@ -256,7 +318,7 @@ void *dowork()
  *      4- length field mismatch:
  *         if to resend segment 4, change length to ff from 64
  */
-void inject_error(int segment_number) {
+void inject_data_error(int segment_number) {
     printf("------------------------------------------------\n");
     if (segment_number == 0x01 && seq_error == 0)
     {
@@ -265,13 +327,6 @@ void inject_error(int segment_number) {
         message[5] = 0x02;
         seq_error = 1;
     }
-    /*
-    if (segment_number == 0x02 && seq_error != 1)
-    {
-        // change length from 0xff
-        message[6] = 0xf0;
-    }
-    */
     else if (segment_number == 0x03 && end_error == 0)
     {
         // missing end of packet id
@@ -295,6 +350,9 @@ void inject_error(int segment_number) {
     }
 }
 
+/*
+ * Reset these vars when we send an EXIT packet to the server
+ */
 void reset_client() {
     segment_number = 0x00;
     seq_error = 0;
@@ -309,7 +367,8 @@ int main(void)
     //struct sockaddr_in si_other;
     int i;
     //int slen=sizeof(si_other);
-    char cmd[BUFLEN];
+    char cmd[1];
+    char access[1];
     int ret = 0x00;
     int start;
     int send_retry = 0;
@@ -345,11 +404,17 @@ int main(void)
      * get users input:
      *      g: send 5 good packets
      *      b: send 1 good and 4 bad
+     *      a: show the Access Menu
      *      n: exit
      */
     memset(cmd,'\0', 1);
-    printf("Send packets to server?: (g/b/n) ");
+    memset(access,'\0', 1);
+    printf("Send packets to server?: (g/b/a/n) ");
+    printf("\n\tg: 5 good packets\n\tb: 1 good 4 bad packets\n\ta: access menu\n\tn: exit client\n");
+
     gets(cmd);
+    
+    // parse cmd
     if (strcmp((const char *)cmd, "n") == 0)
     {
         printf("Terminating client\n");
@@ -361,33 +426,79 @@ int main(void)
     }
     else if (strcmp((const char *)cmd, "b") == 0)
     {
-        printf("Sending 1 Good  and 4 Bad packets..\n");
-        printf("=======================================\n");
+        printf("Sending 1 Good and 4 Bad packets..\n");
+    }
+    else if (strcmp((const char *)cmd, "a") == 0)
+    {
+        printf("\tAccess Menu: (0/1/2/3) \n");
+        
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n");
+        
+        gets(access);
     }
 
+    /*
+     * THIS IS THE START OF A SESSION.
+     * THE SESSION ENDS WHEN THE EXIT PACKET IS SENT
+     */
 NEW_SESSION:
     while(1)
     {
         // sleep
         sleep(1);
         
-        if (segment_number > 0x04) {
+        if (segment_number > 0x04)
+        {
             printf("Stop sending packets.\n");
             break;
         }
-
-        // make a DATA packet
-        memset(message,'\0', BUFLEN);
-	    make_data_packet(client_id, segment_number, TWENTYTHREEBYTES, message);
+        
+        printf("cmd: %s\n", (const char *)cmd);
+        printf("access: %s\n", (const char *)access);
+        if (strcmp((const char *)cmd, "g") == 0 || strcmp((const char *)cmd, "b") == 0)
+        {
+            // make a DATA packet
+            memset(message,'\0', BUFLEN);
+	        make_data_packet(client_id, segment_number, TWENTYTHREEBYTES, message);
 	    
-	    // inject packet errors
-	    if (strcmp((const char *)cmd, "b") == 0) {
-	        inject_error(segment_number);
-	    }
+	        // inject packet errors
+	        if (strcmp((const char *)cmd, "b") == 0)
+	        {
+	            inject_data_error(segment_number);
+	        }
+	        
+	        printf("Sending packet segment: %02x\n", message[5]);
+	        print_header(message, (TWENTYTHREEBYTES + 9), "Data Packet:\n");
+        }
+        else
+        {
+            // make an ACCESS packet
+            memset(message,'\0', BUFLEN);
+            technology = 02;
+            //sub_number = 4294967295;
+            sub_number[0] = 0xFF;
+            sub_number[1] = 0xFF;
+            sub_number[2] = 0xFF;
+            sub_number[3] = 0xFF;
+            //static void make_access_packet(int client_id, int segment_number,
+            //  int technology, int sub_number, char message[])
+	        make_access_packet(client_id, segment_number, technology,
+	            sub_number, message);
+	        printf(" maked access packet\n");
+	  
+	        // inject an access packet error based on user input
+	        if (strcmp((const char *)access, "1") == 0 ||
+	            strcmp((const char *)access, "2") == 0 ||
+	            strcmp((const char *)access, "3") == 0)
+	        {
+	            //inject_access_error(access);
+	        }
+	        
+	        printf("Sending packet segment: %02x\n", message[5]);
+	        print_header(message, FOURTEENBYTES, "Access Packet:\n");
+        }
 
-	    // send
-	    printf("Sending packet segment: %02x\n", message[5]);
-	    print_header(message, (TWENTYTHREEBYTES + 9), "Data Packet:\n");
+	    // send the packet: DATA or ACCESS
 	    if (sendto(s, message, BUFLEN , 0 , (struct sockaddr *) &si_other, slen)==-1)
         {
             die("sendto()");
@@ -397,6 +508,18 @@ NEW_SESSION:
         //clear the buffer by filling null, it might have previously received data
         memset(buf,'\0', REJECTBUFLEN);
 
+        /*
+         * This is the start of the ack_timer implementation
+         *  1. call setitimer() which is setup to call sighdlr() when TIMEOUT expires.
+         *     setitimer() does not block as the timer counts, execution immediately
+         *     continues to the pthread_create() call
+         *  2. pthread_create() creates a thread that calls dowork() in the new thread.
+         *     dowork() itself makes the recvfrom() blocking call. Excecution in the
+         *     new thread does not continue until recvfrom() returns. pthread_create()
+         *     returns immediately.
+         *  3. pthreadblock_join() waits until the new thread is done on its own or
+         *     is killed.
+         */
         // start itimer
         setitimer( ITIMER_REAL, &itv, NULL );
         
@@ -413,10 +536,16 @@ NEW_SESSION:
         //printf("-post pthread_join - retval: %d\n", (int)retval);
         printf("-post pthread_join\n");
  
+        /*
+         * we don't get to here until the new thread exits
+         */
         // print reply packet
 	    print_header(buf, REJECTBUFLEN, "Reply Packet:");
 	    
-	    // if empty reply buf, retry 3 times
+	    /*
+	     * if empty reply buf, retry 3 times. exit session
+	     * if no ACK packet after 3 tries
+	     */
 	    if ((unsigned char)buf[0] == 0x00)
 	    {
 	        printf("ACK timed out...\n");
@@ -432,12 +561,16 @@ NEW_SESSION:
 	        }
 	    }
 
+        /*
+         * we're here because we got an ACK packet
+         */
 	    // check the reply packet:
 	    //      0x1N => invalid packet
 	    //      0x0N => valid packet ack or reject.
 	    ret = check_packet(buf);
 	    //printf("check_packet ret: %02x  &0x10: %02x\n", ret, (ret & 0x10));
 
+        // will remove this code later
 	    if ((ret & 0x10) == 0x10)
 	    {
 	        //printf("post check_packet - Invalid Replay packet\n");
@@ -452,6 +585,9 @@ NEW_SESSION:
 	        //printf("post check_packet - REJECT Packet\n");
 	    }
 	    
+	    /*
+	     * this is where we report the REJECT errors
+	     */
 	    if ((ret & 0x0f) == 0x04)
 	    {
 	        printf("Error - REJECT Packet: out of sequence\n");
@@ -481,6 +617,13 @@ NEW_SESSION:
 
     }
     
+    /*
+     * THIS IS THE END OF A SESSION.
+     * WE SEND THE EXIT PACKET TO LET THE
+     * SERVER KNOW TO RESET ITS STATE FOR
+     * A POSSIBLE NEW SESSION.
+     */
+
     // send a final EXIT packet to reset the server
     memset(message,'\0', BUFLEN);
     segment_number = 0x00;
@@ -493,8 +636,11 @@ NEW_SESSION:
         die("sendto()");
     }
     
-    // ask user
-    printf("\nNew Session?: (g/b/n) ");
+    /*
+     * Ask the user if a new session should be started, or
+     * if to exit the client.
+     */
+    printf("\nNew Session?: (g/b/a/n) ");
     gets(cmd);
     if (strcmp((const char *)cmd, "n") == 0)
     {
@@ -514,6 +660,16 @@ NEW_SESSION:
         printf("Sending 1 Good  and 4 Bad packets..\n");
         reset_client();
 
+        goto NEW_SESSION;
+    }
+    else if (strcmp((const char *)cmd, "a") == 0)
+    {
+        printf("\tAccess Menu: (0/1/2/3) \n");
+        
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n");
+        
+        gets(access);
+        
         goto NEW_SESSION;
     }
 
