@@ -381,8 +381,8 @@ int main(void)
     // server ACK behavior:
     //  n: No ACK delay 
     //  y: ACK delayed 10 sec on 1st packet (segment 0)
-    printf("Delay ACK on segment 0?: (y/n) ");
-    gets(cmd);
+    //printf("Delay ACK on segment 0?: (y/n) ");
+    //gets(cmd);
     
     while(1)
     {
