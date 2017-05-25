@@ -436,6 +436,54 @@ void inject_data_error(char bad[]) {
     
 }
 
+void inject_access_error(char access[]) {
+    
+    if (strcmp((const char *)access, "0") == 0)
+            {
+                // Good Subscriber
+                // 408-680-8821 - paid
+                printf("ACCESS - good subscriber case\n");
+                technology = 02;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x97;
+                sub_number[2] = 0xC0;
+                sub_number[3] = 0xF5;
+            }
+	        else if (strcmp((const char *)access, "1") == 0)
+	        {
+	            // Subscriber has not payed
+	            // 408-666-8821 - not paid
+	            printf("ACCESS - Subscriber not paid case\n");
+	            technology = 03;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x95;
+                sub_number[2] = 0x9E;
+                sub_number[3] = 0x15;
+	        }
+	        else if (strcmp((const char *)access, "2") == 0)
+	        {
+	            // Subscriber number not found
+	            // 408-554-9999 - paid
+	            printf("ACCESS - Subscriber number not found case\n");
+	            technology = 04;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x84;
+                sub_number[2] = 0x8B;
+                sub_number[3] = 0xAF;
+	        }
+	        else if (strcmp((const char *)access, "3") == 0)
+	        {
+	            //  Technology mismatch
+	            // 408-554-6805 - paid
+	            printf("ACCESS - Acc_Perm due to technology mismatch case\n");
+                technology = 02;
+	            sub_number[0] = 0xF3;
+                sub_number[1] = 0x84;
+                sub_number[2] = 0x7F;
+                sub_number[3] = 0x35;
+	        }
+}
+
 /*
  * Reset these vars when we send an EXIT packet to the server
  */
@@ -690,50 +738,9 @@ NEW_SESSION:
         {
             stop_on = 0x00;
             printf("------------------------------------------------\n");
-            if (strcmp((const char *)access, "0") == 0)
-            {
-                // Good Subscriber
-                // 408-680-8821 - paid
-                printf("ACCESS - good subscriber case\n");
-                technology = 02;
-	            sub_number[0] = 0xF3;
-                sub_number[1] = 0x97;
-                sub_number[2] = 0xC0;
-                sub_number[3] = 0xF5;
-            }
-	        else if (strcmp((const char *)access, "1") == 0)
-	        {
-	            // Subscriber has not payed
-	            // 408-666-8821 - not paid
-	            printf("ACCESS - Subscriber not paid case\n");
-	            technology = 03;
-	            sub_number[0] = 0xF3;
-                sub_number[1] = 0x95;
-                sub_number[2] = 0x9E;
-                sub_number[3] = 0x15;
-	        }
-	        else if (strcmp((const char *)access, "2") == 0)
-	        {
-	            // Subscriber number not found
-	            // 408-554-9999 - paid
-	            printf("ACCESS - Subscriber number not found case\n");
-	            technology = 04;
-	            sub_number[0] = 0xF3;
-                sub_number[1] = 0x84;
-                sub_number[2] = 0x8B;
-                sub_number[3] = 0xAF;
-	        }
-	        else if (strcmp((const char *)access, "3") == 0)
-	        {
-	            //  Technology mismatch
-	            // 408-554-6805 - paid
-	            printf("ACCESS - Acc_Perm due to technology mismatch case\n");
-                technology = 02;
-	            sub_number[0] = 0xF3;
-                sub_number[1] = 0x84;
-                sub_number[2] = 0x7F;
-                sub_number[3] = 0x35;
-	        }
+    
+            // inject_access_error sets segment_number based on access
+            inject_access_error(access);
 	        
 	        // make an ACCESS packet
             memset(message,'\0', BUFLEN);
