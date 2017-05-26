@@ -387,7 +387,7 @@ static void read_file(char * filename) {
         if(buffcopy == NULL) {fprintf(stderr, "out of memory\n"); exit(1); }
         strcpy(buffcopy, buff);
         lines[i] = buffcopy;
-        printf("-- read_file -- lines[%d]: %s",i,lines[i]);
+        //printf("-- read_file -- lines[%d]: %s",i,lines[i]);
     }
 
     fclose(fp);
@@ -397,9 +397,9 @@ static void read_file(char * filename) {
         //printf("-- read_file -- lines[%d]: %s", i, lines[i]);
         
         // extract fields
-        char *num = strtok(lines[i], " ");
-        char *tech = strtok(NULL, " ");
-        char *paid = strtok(NULL, " ");
+        char *num = strtok(lines[i], "    ");
+        char *tech = strtok(NULL, "    ");
+        char *paid = strtok(NULL, "    ");
         //printf("-- read_file -- num: %s, tech: %s, paid: %s",
         //    num, tech, paid);
 
