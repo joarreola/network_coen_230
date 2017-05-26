@@ -24,6 +24,9 @@ int prev_segment_number = 0x00;
 char received_segments[10];
 int seg_index = 0;
 int packets_received = 0;
+char buff[1024];
+char* lines[1024];
+char subscriber[3][6];
 
 void die(char *s)
 {
@@ -43,6 +46,92 @@ void print_header(char buf[], int header_length, char *title)
     }
     printf("\n");
 }
+
+/*
+ * START OF FOR ACCESS PACKET ONLY
+ * Rejection packets are made by checking the
+ * subscriber phone number and the technology per the
+ * Verification-Database.txt file:
+ *
+ *      408-554-6805 04 1
+ *      408-666-8821 03 0
+ *      408-680-8821 02 1
+ *
+ *      0xF3847F35      04      1 for case: tech mismatch - 3
+ *      0xF3959E15      03      0 for case: not paid - 1
+ *      0xF397C0F5      02      1 for case: paid - 0
+ */
+void access_check() {
+
+    // unpack the lines[] entries
+    //  408-554-6805 04 1
+    //  408-666-8821 03 0
+    //  408-680-8821 02 1
+    printf("\n");
+    int number_not_found = 1;
+    int i;
+    for (i=0;i<3;i++) {
+        char num[6];
+    
+        // number in subscriber[i][0-3]
+        num[0] = (unsigned char)subscriber[i][0];
+        num[1] = (unsigned char)subscriber[i][1];
+        num[2] = (unsigned char)subscriber[i][2];
+        num[3] = (unsigned char)subscriber[i][3];
+        num[4] = (unsigned char)subscriber[i][4];
+        num[5] = (unsigned char)subscriber[i][5];
+        int n;
+        for (n=0;n<4;n++) {
+            //printf("check_packet - num[%d]: %02x\n", n, (unsigned char)num[n]);
+        }
+
+        
+        // check for number
+        if ((unsigned char)buf[8] == (unsigned char)num[0] && 
+            (unsigned char)buf[9] == (unsigned char)num[1] &&
+            (unsigned char)buf[10] == (unsigned char)num[2] &&
+            (unsigned char)buf[11] == (unsigned char)num[3])
+        {
+            number_not_found = 0;
+
+            // check paid field and tech field
+            if ((unsigned char)num[5] == 1 &&
+                (unsigned char)num[4] == (unsigned char)buf[7])
+            {
+                // Good subscriber
+                printf("check_packet - ACCESS - good subscriber\n");
+                resp_buf[3] = 0xff;
+	            resp_buf[4] = 0xfb;
+            }
+            
+            else if ((unsigned char)num[5] == 0)
+            {
+                // Not paid
+                printf("check_packet - ACCESS - not paid\n");
+                resp_buf[3] = 0xff;
+	            resp_buf[4] = 0xf9;
+            }
+            
+            else if ((unsigned char)num[5] == 1 &&
+                (unsigned char)num[4] != (unsigned char)buf[7])
+            {
+                // tech mismatch
+                printf("check_packet - ACCESS - Acc_Perm due to technology mismatch\n");
+                resp_buf[3] = 0xff;
+	            resp_buf[4] = 0xf8; //?
+            }
+        }
+    }
+    
+    // check for number not found here
+    if (number_not_found) {
+        printf("check_packet - ACCESS - number not found\n");
+        resp_buf[3] = 0xff;
+	       resp_buf[4] = 0xfa;
+    }
+    
+}
+
 
 /*
  * Check packet structure
@@ -161,10 +250,13 @@ static int check_packet(char buf[], char resp_buf[])
 
     } else if ((unsigned char)buf[3] == 0xff && (unsigned char)buf[4] == 0xf8) {
         printf("Packet type: ACCESS\n");
-print_header(buf, ACCESSHEADER, "Access Packet Header");
+        print_header(buf, ACCESSHEADER, "Access Packet Header");
         access_packet = 1;
         
-        goto ACCESS_PACKET;
+        // check access fields vs. Verification_Database.txt in access_check()
+        access_check();
+        
+        goto PACK_RESP_BUF;
     }
 
     /*
@@ -231,66 +323,7 @@ print_header(buf, ACCESSHEADER, "Access Packet Header");
         // add to the received_segments[]
         received_segments[seg_index++] = (unsigned char)buf[5];
     }
-    
-    goto PACK_RESP_BUF;
-    /*
-     * END OF FOR DATA PACKET ONLY
-     */
-     
-    /*
-     * START OF FOR ACCESS PACKET ONLY
-     * Rejection packets are made by checking the
-     * subscriber phone number and the technology per the
-     * Verification-Database.txt file:
-     *
-     *      408-554-6805    04      1
-     *      408-666-8821    03      0
-     *      408-680-8821    02      1
-     *
-     *      0xF3847F35      04      1 for case: tech mismatch - 3
-     *      0xF3959E15      03      0 for case: not paid - 1
-     *      0xF397C0F5      02      1 for case: paid - 0
-     */
-ACCESS_PACKET:
-     // printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2:
-     //     Subscriber number not found\n\t\t3: Technology mismatch\n");
 
-    // check for a good subscriber
-    // return 0xFFFB packet for number 0xF397C0F5
-    if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x97 &&
-        (unsigned char)buf[10] == 0xC0 && (unsigned char)buf[11] == 0xF5)
-    {
-         // Good subscriber
-        printf("check_packet - ACCESS - good subscriber\n");
-        resp_buf[3] = 0xff;
-	    resp_buf[4] = 0xfb;
-    }
-    else if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x95 &&
-        (unsigned char)buf[10] == 0x9E && (unsigned char)buf[11] == 0x15)
-    {
-         // Not paid
-        printf("check_packet - ACCESS - not paid\n");
-        resp_buf[3] = 0xff;
-	    resp_buf[4] = 0xf9;
-    }
-    else if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x84 &&
-        (unsigned char)buf[10] == 0x7F && (unsigned char)buf[11] == 0x35 &&
-        (unsigned char)buf[7] != 04)
-    {
-        // tech mismatch
-        printf("check_packet - ACCESS - Acc_Perm due to technology mismatch\n");
-        resp_buf[3] = 0xff;
-	    resp_buf[4] = 0xf8; //?
-    }
-    else if ((unsigned char)buf[8] == 0xF3 &&  (unsigned char)buf[9] == 0x84 &&
-        (unsigned char)buf[10] == 0x8B && (unsigned char)buf[11] == 0xAF)
-    {
-        // number not found
-        printf("check_packet - ACCESS - number not found\n");
-        resp_buf[3] = 0xff;
-	    resp_buf[4] = 0xfa;
-    }
-    
 PACK_RESP_BUF:
     // compose resp_buf
     if (invalid_packet | reject_code)
@@ -334,6 +367,73 @@ PACK_RESP_BUF:
     }
 
     return(invalid_packet | reject_code);
+}
+
+/*
+ * Read lines in filename. Convert phone number to same format as
+ * sent by the client. Compose an array of arrays with number, tech,
+ * and paid data for each file line.
+ */
+static void read_file(char * filename) {
+    FILE *fp;
+
+    fp = fopen(filename, "r");
+    int i;
+    
+    for(i=0;i<=2;i++){        
+        fgets(buff,sizeof(buff),fp);
+        //
+        char *buffcopy = malloc(strlen(buff) + 1);
+        if(buffcopy == NULL) {fprintf(stderr, "out of memory\n"); exit(1); }
+        strcpy(buffcopy, buff);
+        lines[i] = buffcopy;
+        printf("-- read_file -- lines[%d]: %s",i,lines[i]);
+    }
+
+    fclose(fp);
+    
+    // unpack
+    for (i=0;i<3;i++) {
+        //printf("-- read_file -- lines[%d]: %s", i, lines[i]);
+        
+        // extract fields
+        char *num = strtok(lines[i], " ");
+        char *tech = strtok(NULL, " ");
+        char *paid = strtok(NULL, " ");
+        //printf("-- read_file -- num: %s, tech: %s, paid: %s",
+        //    num, tech, paid);
+
+        // convert 408-554-6805 to 4085546805
+        char *num_1 = strtok(num, "-");
+        char *num_2 = strtok(NULL, "-");
+        char *num_3 = strtok(NULL, "-");
+        strcat(num_2, num_3);
+        strcat(num_1, num_2);
+        //printf("-- read_file -- num_1: %s\n", num_1);
+        
+    
+        // convert 4085546805 to hex?
+        int num_int = atoi(num_1);
+        //printf("-- read_file -- num_int: %x\n", num_int);
+        
+        char num_array[4];
+        strncpy(&num_array[0], (char *)&num_int, 8);
+        
+        // pack a subscriber array of arrays to use in check_packet
+        subscriber[i][0] = num_array[3];
+        subscriber[i][1] = num_array[2];
+        subscriber[i][2] = num_array[1];
+        subscriber[i][3] = num_array[0];
+        subscriber[i][4] = atoi(tech);
+        subscriber[i][5] = atoi(paid);
+    }
+    for (i=0;i<3;i++) {
+        int j = 0;
+        for (j=0;j<6;j++) {
+            //printf("-- read_file -- subscriber[%d][%d]: %02x\n",
+            //    i,j,(unsigned char)subscriber[i][j]); 
+        }
+    }
 }
 
 void reset_server() {
@@ -384,6 +484,12 @@ int main(void)
     //printf("Delay ACK on segment 0?: (y/n) ");
     //gets(cmd);
     
+    // read Verification_Database.txt file
+    //  408-554-6805 04 1
+    //  408-666-8821 03 0
+    //  408-680-8821 02 1
+    read_file("Verification_Database.txt");
+
     while(1)
     {
 
