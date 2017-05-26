@@ -82,7 +82,7 @@ void access_check() {
         num[5] = (unsigned char)subscriber[i][5];
         int n;
         for (n=0;n<4;n++) {
-            //printf("check_packet - num[%d]: %02x\n", n, (unsigned char)num[n]);
+            //printf("access_check - num[%d]: %02x\n", n, (unsigned char)num[n]);
         }
 
         
@@ -99,7 +99,7 @@ void access_check() {
                 (unsigned char)num[4] == (unsigned char)buf[7])
             {
                 // Good subscriber
-                printf("check_packet - ACCESS - good subscriber\n");
+                printf("access_check - ACCESS - good subscriber\n");
                 resp_buf[3] = 0xff;
 	            resp_buf[4] = 0xfb;
             }
@@ -107,7 +107,7 @@ void access_check() {
             else if ((unsigned char)num[5] == 0)
             {
                 // Not paid
-                printf("check_packet - ACCESS - not paid\n");
+                printf("access_check - ACCESS - not paid\n");
                 resp_buf[3] = 0xff;
 	            resp_buf[4] = 0xf9;
             }
@@ -116,7 +116,7 @@ void access_check() {
                 (unsigned char)num[4] != (unsigned char)buf[7])
             {
                 // tech mismatch
-                printf("check_packet - ACCESS - Acc_Perm due to technology mismatch\n");
+                printf("access_check - ACCESS - Acc_Perm due to technology mismatch\n");
                 resp_buf[3] = 0xff;
 	            resp_buf[4] = 0xf8; //?
             }
@@ -125,7 +125,7 @@ void access_check() {
     
     // check for number not found here
     if (number_not_found) {
-        printf("check_packet - ACCESS - number not found\n");
+        printf("access_check - ACCESS - number not found\n");
         resp_buf[3] = 0xff;
 	       resp_buf[4] = 0xfa;
     }
