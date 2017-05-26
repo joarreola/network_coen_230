@@ -621,6 +621,7 @@ void top_menu() {
     if (strcmp((const char *)cmd, "n") == 0)
     {
         printf("Terminating client\n");
+
         exit(0);
     }
     else if (strcmp((const char *)cmd, "g") == 0)
@@ -657,7 +658,11 @@ void top_menu() {
  * if to terminate the client.
  */
 int bottom_menu() {
-
+ 
+    if (access_packet) {
+        //printf("access_packet: %d\n", access_packet);
+        goto ACCESS;
+    }
     printf("\nNew Session?: (g/b/a/n) ");
     segment_number = 0;
     gets(cmd);
@@ -706,15 +711,20 @@ int bottom_menu() {
     }
     else if (strcmp((const char *)cmd, "a") == 0)
     {
-        printf("\tAccess Menu: (0/1/2/3) \n");
         
-        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t");
+ACCESS:
+        printf("\tAccess Menu: (0/1/2/3/4) \n");
+        
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t4: Exit access menu\n\t\t");
         
         gets(access_in);
         
         reset_client();
         send_exit();
-        
+        if (strcmp((const char *)access_in, "4") == 0) {
+            access_packet = 0;
+            segment_number = 2;
+        }
         return(1);
     }
 }
