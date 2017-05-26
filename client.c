@@ -254,7 +254,7 @@ static int check_packet(char buf[])
         invalid_packet = 0x10;
     }
    /*
-    * END OF DATA PACKET ONLY
+    * END OF (unsigned char) PACKET ONLY
     */
 
 END:
