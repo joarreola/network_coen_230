@@ -44,7 +44,16 @@ int slen=sizeof(si_other);
 pthread_t thread;
 char sub_number[4];
 int technology;
+char cmd[1];
+char access_in[1];
+char bad[3];
+char bad_temp[3];
+char seg[1];
+int stop_on;
+int access_packet = 0;
+int bad_packet = 0;
 
+// functions
 void die(char *s)
 {
     perror(s);
@@ -380,7 +389,7 @@ void *dowork()
 }
 
 /*
- *  Inject errors per Assignment 1 requirements, to a DATA packet
+ *  Inject errors per Assignment 1 requirements to a DATA packet
  *      1- out of sequence:
  *         if to send segment 1, change segment to 2
  *      2- missing end of packet id:
@@ -426,6 +435,8 @@ void inject_data_error(int segment_number) {
 }
 
 /*
+ * Call this if using the bad-menu user interface
+ *
  *  Inject errors per Assignment 1 requirements, to a DATA packet
  *      1- out of sequence:
  *         if to send segment 1, change segment to 2
@@ -444,7 +455,6 @@ void inject_data_error_menu(char bad[]) {
     int condition = atoi(c);
     int segment = atoi(s);
     printf("- inject_data_error - condition: %d segment: %d\n", condition, segment);
-
 
     printf("------------------------------------------------\n");
 
@@ -552,7 +562,7 @@ void reset_client() {
 }
 
 /*
- * Send a exit packet to reset the sever state
+ * Send an exit packet to reset the sever state
  */
 void send_exit() {
     memset(message,'\0', BUFLEN);
@@ -568,9 +578,151 @@ void send_exit() {
         die("sendto()");
     }
 }
+
+/*
+ * get users input:
+ *      g: send 5 good packets automatically
+ *
+ *      b: send 1 good and 4 bad
+ *  or
+ *      b: show bad packets Menu: enter option, then segment number
+ *          0: good single packet
+ *              seg: segment number
+ *          1: Out Of Sequence condition
+ *              seg: segment number
+ *          2: Missing End Of Packet ID condition
+ *              seg: segment number
+ *          3: Duplicate Packet condition
+ *              seg: segment number
+ *          4: Length Mismatch condition
+ *              seg: segment number
+ *
+ *      a: show the Access Menu
+ *          0: good subscriber
+ *          1: Subscriber has not payed
+ *          2: Subscriber number not found
+ *          3: Technology mismatch
+ *
+ *      n: exit
+ */
+void top_menu() {
+    
+    memset(cmd,'\0', 1);
+    memset(access_in,'\0', 1);
+    memset(bad,'\0', 3);
+    memset(bad_temp,'\0', 3);
+    
+    printf("Send packets to server?: (g/b/a/n) ");
+    printf("\n\tg: 5 good packets\n\tb: bad packets menu\n\ta: access menu\n\tn: exit client\n\t");
+
+    gets(cmd);
+    
+    // parse cmd
+    if (strcmp((const char *)cmd, "n") == 0)
+    {
+        printf("Terminating client\n");
+        exit(0);
+    }
+    else if (strcmp((const char *)cmd, "g") == 0)
+    {
+        printf("Sending 5 Good packets..\n");
+        stop_on = 0x04;
+    }
+    else if (strcmp((const char *)cmd, "b") == 0)
+    {
+        printf("Sending 1 Good and 4 bad packets..\n");
+        //printf("\tBad Menu: (0/1/2/3/4) (segment) \n");
+        //printf("\t\t0: good single packet\n\t\t1: Out Of Sequence\n\t\t2: Missing End Of Packet ID\n\t\t3: Duplicate Packet\n\t\t4: Length Mismatch\n\t\t");
+        //gets(bad);
+
+        //stop_on = 0x00;
+        stop_on = 0x04;
+        bad_packet = 1;
+    }
+    else if (strcmp((const char *)cmd, "a") == 0)
+    {
+        printf("\tAccess Menu: (0/1/2/3) \n");
+        
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t");
+        
+        gets(access_in);
+        
+        stop_on = 0x00;
+        access_packet = 1;
+    }
+}
+
+/*
+ * Ask the user if a new session should be started, or
+ * if to terminate the client.
+ */
+int bottom_menu() {
+
+    printf("\nNew Session?: (g/b/a/n) ");
+    segment_number = 0;
+    gets(cmd);
+    
+    if (strcmp((const char *)cmd, "n") == 0)
+    {
+        printf("Terminating client\n");
+        send_exit();
+    
+        return(0);
+        
+    }
+    else if (strcmp((const char *)cmd, "g") == 0)
+    {
+        printf("Sending 5 Good packets..\n");
+        reset_client();
+        send_exit();
+
+        return(1);
+    }
+    else if (strcmp((const char *)cmd, "b") == 0)
+    {
+        printf("Sending 1 Good  and 4 Bad packets..\n");
+        reset_client();
+        send_exit();
+
+        //printf("\tBad Menu: (0/1/2/3/4) (segment) \n");
+        //printf("\t\t0: good single packet\n\t\t1: Out Of Sequence\n\t\t2: Missing End Of Packet ID\n\t\t3: Duplicate Packet\n\t\t4: Length Mismatch\n\t\t");
+        //gets(bad);
+
+        /* for bad menu
+        stop_on = 0x00;
+        //bad_packet = 1;
+        printf("length_err: %d seq_error: %d good_packet: %d\n",
+            length_err, seq_error,good_packet);
+        if (length_err) {
+            reset_client();
+            send_exit();
+            seq_error = 0;
+            good_packet = 0;
+            length_err = 1;
+        }
+        */
+
+        return(1);
+    }
+    else if (strcmp((const char *)cmd, "a") == 0)
+    {
+        printf("\tAccess Menu: (0/1/2/3) \n");
+        
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t");
+        
+        gets(access_in);
+        
+        reset_client();
+        send_exit();
+        
+        return(1);
+    }
+}
+
+
 /*
  * - Control loop is implemented in the main function after taking in
- *    user inputs:
+ *    user input:
  *
  *      - check if segment_number is above the stop_on value. 0 for cmd a and b, 4 for g.
  *        break out of the loop if so.
@@ -614,20 +766,10 @@ void send_exit() {
  */
 int main(void)
 {
-    //struct sockaddr_in si_other;
     int i;
-    //int slen=sizeof(si_other);
-    char cmd[1];
-    char access[1];
-    char bad[3];
-    char bad_temp[3];
-    char seg[1];
     int ret = 0x00;
     int start;
     char *thread_data;
-    int stop_on;
-    int access_packet = 0;
-    int bad_packet = 0;
 
     // ack_timer setup
     signal( SIGALRM, sighdlr );
@@ -655,82 +797,15 @@ int main(void)
         exit(1);
     }
  
-    /*
-     * get users input:
-     *      g: send 5 good packets automatically
-     *
-     *      b: send 1 good and 4 bad
-     *  or
-     *      b: show bad packets Menu: enter option, then segment number
-     *          0: good single packet
-     *              seg: segment number
-     *          1: Out Of Sequence condition
-     *              seg: segment number
-     *          2: Missing End Of Packet ID condition
-     *              seg: segment number
-     *          3: Duplicate Packet condition
-     *              seg: segment number
-     *          4: Length Mismatch condition
-     *              seg: segment number
-     *
-     *      a: show the Access Menu
-     *          0: good subscriber
-     *          1: Subscriber has not payed
-     *          2: Subscriber number not found
-     *          3: Technology mismatch
-     *
-     *      n: exit
-     */
-    memset(cmd,'\0', 1);
-    memset(access,'\0', 1);
-    memset(bad,'\0', 3);
-    memset(bad_temp,'\0', 3);
-    
-    // top menu
-    printf("Send packets to server?: (g/b/a/n) ");
-    printf("\n\tg: 5 good packets\n\tb: bad packets menu\n\ta: access menu\n\tn: exit client\n\t");
-
-    gets(cmd);
-    
-    // parse cmd
-    if (strcmp((const char *)cmd, "n") == 0)
-    {
-        printf("Terminating client\n");
-        exit(0);
-    }
-    else if (strcmp((const char *)cmd, "g") == 0)
-    {
-        printf("Sending 5 Good packets..\n");
-        stop_on = 0x04;
-    }
-    else if (strcmp((const char *)cmd, "b") == 0)
-    {
-        printf("Sending 1 Good and 4 bad packets..\n");
-        //printf("\tBad Menu: (0/1/2/3/4) (segment) \n");
-        //printf("\t\t0: good single packet\n\t\t1: Out Of Sequence\n\t\t2: Missing End Of Packet ID\n\t\t3: Duplicate Packet\n\t\t4: Length Mismatch\n\t\t");
-        //gets(bad);
-
-        //stop_on = 0x00;
-        stop_on = 0x04;
-        bad_packet = 1;
-    }
-    else if (strcmp((const char *)cmd, "a") == 0)
-    {
-        printf("\tAccess Menu: (0/1/2/3) \n");
-        
-        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t");
-        
-        gets(access);
-        
-        stop_on = 0x00;
-        access_packet = 1;
-    }
+    // get initial user input
+    top_menu();
 
     /*
      * THIS IS THE START OF A SESSION.
      * THE SESSION ENDS WHEN THE EXIT PACKET IS SENT
      */
 NEW_SESSION:
+
     while(1)
     {
         // sleep
@@ -798,7 +873,7 @@ NEW_SESSION:
             printf("------------------------------------------------\n");
     
             // inject_access_error sets segment_number based on access
-            inject_access_error(access);
+            inject_access_error(access_in);
 	        
 	        // make an ACCESS packet
             memset(message,'\0', BUFLEN);
@@ -833,11 +908,11 @@ NEW_SESSION:
          *  3. pthreadblock_join() waits until the new thread is done on its own or
          *     is killed.
          */
+         
         // start itimer
         setitimer( ITIMER_REAL, &itv, NULL );
         
         // call recvfrom() in dowork()
-        printf("-pre pthread_create\n");
         if(pthread_create(&thread, NULL, dowork, NULL) != 0)
         {
             die("pthread_create()");
@@ -846,12 +921,11 @@ NEW_SESSION:
         //If the target thread was canceled, then PTHREAD_CANCELED is placed in *retval.
         void *retval;
         pthread_join(thread, &retval);
-        //printf("-post pthread_join - retval: %d\n", (int)retval);
-        printf("-post pthread_join\n");
- 
+
         /*
          * we don't get to here until the new thread exits
          */
+         
         // print reply packet
 	    print_header(buf, REJECTBUFLEN, "Reply Packet:");
 	    
@@ -881,6 +955,7 @@ NEW_SESSION:
 	    
         /*
          * this is where we report the REJECT errors
+         * Comment out if re-implementing the bad-menu UI
          */
         if ((ret & 0x0f) == 0x04)
         {
@@ -917,64 +992,9 @@ NEW_SESSION:
      * A POSSIBLE NEW SESSION.
      */
 
-
-    /*
-     * Ask the user if a new session should be started, or
-     * if to exit the client.
-     */
-    printf("\nNew Session?: (g/b/a/n) ");
-    segment_number = 0;
-    gets(cmd);
+    // another sessions?
+    if (bottom_menu()) {
     
-    if (strcmp((const char *)cmd, "n") == 0)
-    {
-        printf("Terminating client\n");
-        
-        exit(0);
-    }
-    else if (strcmp((const char *)cmd, "g") == 0)
-    {
-        printf("Sending 5 Good packets..\n");
-        reset_client();
-        send_exit();
-        goto NEW_SESSION;
-    }
-    else if (strcmp((const char *)cmd, "b") == 0)
-    {
-        printf("Sending 1 Good  and 4 Bad packets..\n");
-        reset_client();
-        send_exit();
-
-        //printf("\tBad Menu: (0/1/2/3/4) (segment) \n");
-        //printf("\t\t0: good single packet\n\t\t1: Out Of Sequence\n\t\t2: Missing End Of Packet ID\n\t\t3: Duplicate Packet\n\t\t4: Length Mismatch\n\t\t");
-        //gets(bad);
-
-        /* for bad menu
-        stop_on = 0x00;
-        //bad_packet = 1;
-        printf("length_err: %d seq_error: %d good_packet: %d\n",
-            length_err, seq_error,good_packet);
-        if (length_err) {
-            reset_client();
-            send_exit();
-            seq_error = 0;
-            good_packet = 0;
-            length_err = 1;
-        }
-        */
-
-        goto NEW_SESSION;
-    }
-    else if (strcmp((const char *)cmd, "a") == 0)
-    {
-        printf("\tAccess Menu: (0/1/2/3) \n");
-        
-        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t");
-        
-        gets(access);
-        
-        reset_client();
-        send_exit();
         goto NEW_SESSION;
     }
 
