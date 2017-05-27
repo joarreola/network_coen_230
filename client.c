@@ -660,7 +660,6 @@ void top_menu() {
 int bottom_menu() {
  
     if (access_packet) {
-        //printf("access_packet: %d\n", access_packet);
         goto ACCESS;
     }
     printf("\nNew Session?: (g/b/a/n) ");
