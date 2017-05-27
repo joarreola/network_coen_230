@@ -680,6 +680,7 @@ int bottom_menu() {
         printf("Sending 5 Good packets..\n");
         reset_client();
         send_exit();
+        stop_on = 0x04;
 
         return(1);
     }
@@ -688,6 +689,7 @@ int bottom_menu() {
         printf("Sending 1 Good  and 4 Bad packets..\n");
         reset_client();
         send_exit();
+        stop_on = 0x04;
 
         //printf("\tBad Menu: (0/1/2/3/4) (segment) \n");
         //printf("\t\t0: good single packet\n\t\t1: Out Of Sequence\n\t\t2: Missing End Of Packet ID\n\t\t3: Duplicate Packet\n\t\t4: Length Mismatch\n\t\t");
@@ -713,15 +715,18 @@ int bottom_menu() {
     {
         
 ACCESS:
-        printf("\tAccess Menu: (0/1/2/3/4) \n");
+        printf("\tAccess Menu: (0/1/2/3/n) \n");
         
-        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\t4: Exit access menu\n\t\t");
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Technology mismatch\n\t\tn: Exit access menu\n\t\t");
         
         gets(access_in);
         
         reset_client();
         send_exit();
-        if (strcmp((const char *)access_in, "4") == 0) {
+        stop_on = 0x00;
+
+        access_packet = 1;
+        if (strcmp((const char *)access_in, "n") == 0) {
             access_packet = 0;
             segment_number = 2;
         }
@@ -825,9 +830,10 @@ NEW_SESSION:
         if (segment_number > stop_on)
         {
             printf("Stop sending packets.\n");
+            //printf("segment_number: %d stop_on: %d\n", segment_number, stop_on);
             break;
         }
-        
+        //printf("segment_number: %d stop_on: %d\n", segment_number, stop_on);
 
         if (strcmp((const char *)cmd, "g") == 0)
         {
@@ -991,8 +997,8 @@ NEW_SESSION:
            continue;
         }
 
-	    // increment the segment number
-	    segment_number++;
+        // increment the segment number
+        segment_number++;
 
     }
     /*
