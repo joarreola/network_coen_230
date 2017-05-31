@@ -101,7 +101,7 @@ static void print_header(char buf[], int header_length, char *title)
  *          phone number:   0xFFFFFFFF // 3 numbers in hex
  *          end id:         0xFFFF
  */
-static int check_packet(char buf[])
+static int check_reply_packet(char buf[])
 {
     int invalid_packet = 0x00;
     int data_ack_packet = 0;
@@ -117,21 +117,21 @@ static int check_packet(char buf[])
     // check header: start[0-1], client[2], type[3-4]
     if ((unsigned char)buf[0] != 0xff && (unsigned char)buf[1] != 0xff)
     {
-        printf("check_packet - Start of packet ID not 0xffff: buf[0]: %02x  buf[1]: %02x\n",
+        printf("check_reply_packet - Start of packet ID not 0xffff: buf[0]: %02x  buf[1]: %02x\n",
             (unsigned char)buf[0], (unsigned char)buf[1]);
         invalid_packet = 0x10;
     }
     
     if ((unsigned char)buf[2] != 0x0a)
     {
-        printf("check_packet - Client ID not 0x0a\n: buf[2]: %02x\n", (unsigned char)buf[2]);
+        printf("check_reply_packet - Client ID not 0x0a\n: buf[2]: %02x\n", (unsigned char)buf[2]);
         invalid_packet = 0x10;
     }
    
     if ((unsigned char)buf[3] != 0xff &&
         ((unsigned char)buf[4] != 0xf2 || (unsigned char)buf[4] != 0xf3))
     {
-        printf("check_packet - Packet type: not ACK nor REJECT 0xfff1: buf[3]: %02x  buf[4]: %02x\n",
+        printf("check_reply_packet - Packet type: not ACK nor REJECT 0xfff1: buf[3]: %02x  buf[4]: %02x\n",
             (unsigned char)buf[3], (unsigned char)buf[4]);
         invalid_packet = 0x10;
     }
@@ -166,7 +166,7 @@ static int check_packet(char buf[])
     // check ACK header for segment number seg[5]
     if (data_ack_packet && (unsigned char)buf[5] != segment_number)
     {
-        printf("check_packet - ACK packet segment not %02x buf[5]: %02x\n",
+        printf("check_reply_packet - ACK packet segment not %02x buf[5]: %02x\n",
             segment_number, (unsigned char)buf[5]);
         invalid_packet = 0x10;
     }
@@ -195,22 +195,22 @@ static int check_packet(char buf[])
         // check sub codes
         if ((unsigned char)buf[6] == 0xf4)
         {
-            //printf("Reject Packet Sub-code: Out of sequence segment.\n");
+            printf("Reject Packet Sub-code: Out of sequence segment.\n");
             reject_subcode = 0x04;
         }
         if ((unsigned char)buf[6] == 0xf5)
         {
-            //printf("Reject Packet Sub-code: Length misatch.\n");
+            printf("Reject Packet Sub-code: Length misatch.\n");
             reject_subcode = 0x05;
         }
         if ((unsigned char)buf[6] == 0xf6)
         {
-            //printf("Reject Packet Sub-code: End of packet missing.\n");
+            printf("Reject Packet Sub-code: End of packet missing.\n");
             reject_subcode = 0x06;
         }
         if ((unsigned char)buf[6] == 0xf7)
         {
-            //printf("Reject Packet Sub-code: Duplicate packet.\n");
+            printf("Reject Packet Sub-code: Duplicate packet.\n");
             reject_subcode = 0x07;
         }
     }
@@ -249,21 +249,6 @@ ACCESS_PACKET:
         printf("ACCESS packet: Subscriber Technology mismatch.\n");
         invalid_packet = 0x10;
     }
-/*
-    // check subscriber number: 0xffffffff
-    if (access_ack_packet &&
-        (
-            (unsigned char)buf[8] != 0xFF &&
-            (unsigned char)buf[9] != 0xFF &&
-            (unsigned char)buf[10] != 0xFF &&
-            (unsigned char)buf[11] != 0xFF)
-        )
-    {
-        printf("Subscriber number is not  0xFF: buf[8]: %02x\n",
-            (unsigned char)buf[8]);
-        invalid_packet = 0x10;
-    }
-*/
    /*
     * END OF ACCESS PACKET ONLY
     */
@@ -341,10 +326,10 @@ static void make_access_packet(int client_id, int segment_number,
 }
 
 /*
- * Called by setitimer when count is down to 0
+ *  Called by setitimer when count is down to 0
  *  setitimer( ITIMER_REAL, &itv, NULL );
  *
- *  See the timer setup:
+ *  The timer setup:
  *      ack_timer setup
  *      signal( SIGALRM, sighdlr ); 
  *      struct itimerval itv;
@@ -371,8 +356,8 @@ void sighdlr()
  */
 void *dowork()
 {
-    //try to receive some data, this is a blocking call
-    printf("waiting for reply...\n");
+    //try to receive some data
+    printf("Waiting for reply from server...\n");
     if (recvfrom(s, buf, REJECTBUFLEN, 0, (struct sockaddr *) &si_other, &slen) == -1)
     {
         die("recvfrom()");
@@ -380,7 +365,7 @@ void *dowork()
 }
 
 /*
- *  Inject errors per b-bad option menu from user
+ *  Inject errors per b-bad option choice from user
  *      1- out of sequence:
  *         suppose to send segment 1, but change to segment 2
  *      2- missing end of packet id:
@@ -417,7 +402,7 @@ void inject_data_error(int segment_number) {
     }
     else if (segment_number == 0x04)
     {
-        // now send segment 4 for reals
+        // now send segment 4 for real
         // length field value is greater that actual payload
         printf("Create Length Mismatch condition\n");
         message[6] = 0xff;
@@ -426,7 +411,7 @@ void inject_data_error(int segment_number) {
 }
 
 /* 
-*  Inject access error per a-access option menu for part 2 of assignment
+*  Inject access error per a-access option choice for assignment 2
 */
 void inject_access_error(char access[]) {
     
@@ -443,7 +428,7 @@ void inject_access_error(char access[]) {
             }
 	        else if (strcmp((const char *)access, "1") == 0)
 	        {
-	            // Subscriber has not payed
+	            // Subscriber has not paid
 	            // 408-666-8821 - not paid
 	            printf("ACCESS - Subscriber not paid case\n");
 	            technology = 03;
@@ -508,8 +493,8 @@ void send_exit() {
 }
 
 /*
- * get users input:
- *      g: send 5 good packets automatically
+ *  Get user input:
+ *      g: send 5 good packets 
  *
  *      b: send 1 good and 4 bad
  *
@@ -525,7 +510,7 @@ void top_menu() {
     memset(cmd,'\0', 1);
     memset(access_in,'\0', 1);
     memset(bad,'\0', 3);
-    memset(bad_temp,'\0', 3);
+    //memset(bad_temp,'\0', 3);
     
     printf("Send packets to server?: (g/b/a/n) ");
     printf("\n\tg: 5 good packets\n\tb: 1 good, 4 bad packets menu\n\ta: access menu\n\tn: exit client\n\t");
@@ -554,7 +539,7 @@ void top_menu() {
     {
         printf("\tAccess Menu: (0/1/2/3) \n");
         
-        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not payed\n\t\t2: Subscriber number not found\n\t\t3: Subscriber Technology mismatch\n\t\t");
+        printf("\t\t0: Good Subscriber\n\t\t1: Subscriber has not paid\n\t\t2: Subscriber number not found\n\t\t3: Subscriber Technology mismatch\n\t\t");
     
         gets(access_in);
         
@@ -662,7 +647,7 @@ ACCESS:
  *              ... program exec continues here ...
  *
  *      - Implement the ACK timed out mechanism. Retry max of 3. 
- *      - Inspect the reply packet via check_packet()
+ *      - Inspect the reply packet via check_reply_packet()
  *
  *      - increment segment_number
  *  
@@ -709,6 +694,8 @@ int main(void)
      * THIS IS THE START OF A SESSION.
      * THE SESSION ENDS WHEN THE EXIT PACKET IS SENT
      */
+
+
 NEW_SESSION:
 
     while(1)
@@ -720,7 +707,7 @@ NEW_SESSION:
             //printf("Stop sending packets.\n");
             break;
         }
-
+        
         if (strcmp((const char *)cmd, "g") == 0)
         {
             stop_on = 0x04;
@@ -730,7 +717,7 @@ NEW_SESSION:
 	        make_data_packet(client_id, segment_number, TWENTYTHREEBYTES, message);
 	        
 	        printf("------------------------------------------------\n");
-	        printf("Sending packet segment: %02x\n", message[5]);
+	        printf("Sending good packet segment: %02x\n", message[5]);
 	        //print_header(message, (TWENTYTHREEBYTES + 9), "Data Packet:\n");
         }
         else if (strcmp((const char *)cmd, "b") == 0)
@@ -741,15 +728,13 @@ NEW_SESSION:
             memset(message,'\0', BUFLEN);
 	        make_data_packet(client_id, segment_number, TWENTYTHREEBYTES, message);
 	    
-/*
-*/
             inject_data_error(segment_number);
 	        
 	        printf("------------------------------------------------\n");
-	        printf("Sending packet segment: %02x\n", message[5]);
+	        printf("Sending bad packet segment: %02x\n", message[5]);
 	        //print_header(message, (TWENTYTHREEBYTES + 9), "Data Packet:\n");
         }
-        else
+        else   //access option
         {
             stop_on = 0x00;
             printf("------------------------------------------------\n");
@@ -764,8 +749,8 @@ NEW_SESSION:
 	            sub_number, message);
 
             printf("------------------------------------------------\n");
-	        printf("Sending packet segment: %02x\n", message[5]);
-	        //print_header(message, FOURTEENBYTES, "Access Packet:\n");
+	        printf("Sending access packet segment: %02x\n", message[5]);
+	        print_header(message, FOURTEENBYTES, "Access Packet:\n");
         }
 
 	    // send the packet: DATA or ACCESS
@@ -774,7 +759,6 @@ NEW_SESSION:
             die("sendto()");
         }
 
-        //receive a reply and print it
         //clear the buffer by filling null
         memset(buf,'\0', REJECTBUFLEN);
 
@@ -805,7 +789,7 @@ NEW_SESSION:
         pthread_join(thread, &retval);
 
         /*
-         * we don't get to here until the new thread exits
+         *  don't get to here until the new thread exits
          */
          
         // print reply packet
@@ -814,6 +798,7 @@ NEW_SESSION:
 	    /*
 	     * if empty reply buf, retry 3 times. exit session if no ACK packet after 3 tries
 	     */
+	    // buf was set to 0 via memset
 	    if ((unsigned char)buf[0] == 0x00)
 	    {
 	        printf("ACK timed out...\n");
@@ -830,18 +815,16 @@ NEW_SESSION:
 	    }
 
 	    // check the reply packet:
-	    ret = check_packet(buf);
+	    ret = check_reply_packet(buf);
 
 	    
         /*
          * this is where we report the REJECT errors
-         * Comment out if re-implementing the bad-menu UI
          */
         if ((ret & 0x0f) == 0x04)
         {
            printf("REJECT Packet: out of sequence\n");
-           //printf("post check_packet - current segment_number: %02x\n", segment_number);
-              
+
            // don't increment segment number
            continue;
         }
@@ -869,7 +852,7 @@ NEW_SESSION:
 
     /*
      * THIS IS THE END OF A SESSION.
-     * WE SEND THE EXIT PACKET TO LET THE
+     * WE SEND THE EXIT PACKET IN THE bottom_menu() TO LET THE
      * SERVER KNOW TO RESET ITS STATE FOR
      * A POSSIBLE NEW SESSION.
      */
