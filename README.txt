@@ -3,7 +3,7 @@ How to compile:
 	Go to the path where you store the Pserver.c, Pclient.c, and 
 	Verification_Database.txt.
 •	On the server terminal, issue the compiling command:
-        # gcc Pserver.c –o server.out
+        # gcc -w Pserver.c –o server.out
 •	On the client terminal, issue the compiling command:
         # gcc -w –pthread Pclient.c –o client.out
 
