@@ -491,7 +491,7 @@ int main(void)
         {
             continue;
         }
-        print_header(buf, ACCESSHEADER, "Packet Header");
+        //print_header(buf, ACCESSHEADER, "Packet Header");
 	    
 	    // count as a received packet
 	    packets_received++;
