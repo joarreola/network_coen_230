@@ -290,8 +290,8 @@ static int check_received_packet(char buf[], char resp_buf[])
 
     // detect end of packet or length mismatch or duplicate packet
     // assume that the end of packet id is valid
-    if (data_packet && (unsigned char)buf[end_first] != 0xff ||
-        (unsigned char)buf[end_second] != 0xff)
+    if (data_packet && ((unsigned char)buf[end_first] != 0xff ||
+        (unsigned char)buf[end_second] != 0xff))
     {
         printf("REJECT PACKET\n");
         printf("Error - End of Packet Id not 0xffff: buf[6]: %02x buf[end_first]: %02x buf[end_second]: %02x\n",
@@ -401,15 +401,21 @@ static void read_file(char * filename) {
         char *num_1 = strtok(num, "-");
         char *num_2 = strtok(NULL, "-");
         char *num_3 = strtok(NULL, "-");
-        strcat(num_2, num_3);
-        strcat(num_1, num_2);
+        //strcat(num_2, num_3);
+        //strcat(num_1, num_2);
         //printf("-- read_file -- num_1: %s\n", num_1);
         
+        char stuff[100];
+        stuff[0] = '\0';
+        strcpy(stuff, num_1);
+        strcat(stuff, num_2);
+        strcat(stuff, num_3);
+        
         // convert 4085546805 to hex
-        int num_int = atoi(num_1);
+        int num_int = atoi(stuff);
         //printf("-- read_file -- num_int: %x\n", num_int);
         
-        char num_array[4];
+        char num_array[8];
         strncpy(&num_array[0], (char *)&num_int, 8);
         
         // stuff a subscriber array of arrays to use in check_received_packet
