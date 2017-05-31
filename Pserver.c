@@ -81,10 +81,6 @@ void access_check() {
         num[3] = (unsigned char)subscriber[i][3];
         num[4] = (unsigned char)subscriber[i][4];
         num[5] = (unsigned char)subscriber[i][5];
-      //  int n;
-      //  for (n=0;n<4;n++) {
-            //printf("access_check - num[%d]: %02x\n", n, (unsigned char)num[n]);
-     //   }
 
         // check if number exist in file
         if ((unsigned char)buf[8] == (unsigned char)num[0] && 
@@ -161,9 +157,9 @@ void access_check() {
  *          phone number:   0xFFFFFFFF // in hex
  *          end id:         0xFFFF
  */
-static int check_packet(char buf[], char resp_buf[])
+static int check_received_packet(char buf[], char resp_buf[])
 {
-    int invalid_packet = 0;
+    int invalid_packet = 0x00;
     int data_packet = 0;
     int access_packet = 0;
     int length;
@@ -212,13 +208,13 @@ static int check_packet(char buf[], char resp_buf[])
     {
         printf("Error - Start of packet ID not 0xffff: buf[0]: %02x  buf[1]: %02x\n",
             (unsigned char)buf[0], (unsigned char)buf[1]);
-        invalid_packet= 1;
+        invalid_packet= 0x01;
     }
     // check client id 
     if ((unsigned char)buf[2] != 0x0a)
     {
         printf("Error - Client ID not 0x0a\n: buf[2]: %02x\n", (unsigned char)buf[2]);
-        invalid_packet = 1;
+        invalid_packet = 0x01;
     }
     // check if it is EXIT packet
     if ((unsigned char)buf[3] == 0xff && (unsigned char)buf[4] == EXIT)
@@ -234,7 +230,7 @@ static int check_packet(char buf[], char resp_buf[])
         printf("Error - Packet type not DATA 0xfff1: buf[3]: %02x  buf[4]: %02x\n",
             (unsigned char)buf[3], (unsigned char)buf[4]);
 
-        invalid_packet = 1;
+        invalid_packet = 0x01;
         
         goto PACK_RESP_BUF;
 
@@ -256,7 +252,7 @@ static int check_packet(char buf[], char resp_buf[])
     /*
      * START OF FOR DATA PACKET ONLY
      */
-    // have a good data packet header, so far
+    // have a good data packet header so far
     // check segment in received_segments
     for (i=0; i<seg_index; i++)
     {
@@ -269,8 +265,14 @@ static int check_packet(char buf[], char resp_buf[])
     
     // check DATA header: seg[5], length[6], payload[length[6]]
     // need to detect out of sequence
-    if (prev_segment_number == next_segment_number) { cmp_segment = 0x00; }
-    else { cmp_segment = next_segment_number; }
+    // initialize first segment
+    if (prev_segment_number == next_segment_number) { 
+        cmp_segment = 0x00; 
+    }
+    else
+    {
+        cmp_segment = next_segment_number; 
+    }
     
     // check out of sequence packet
     if (data_packet && ((unsigned char)buf[5] != cmp_segment) && already_received == 0)
@@ -310,7 +312,7 @@ static int check_packet(char buf[], char resp_buf[])
         reject_code = 0xf7;
     }
     
-    if (data_packet && reject_code != 0xf4)
+    if (data_packet && (reject_code != 0xf4))
     {
         // add to the received_segments[]
         received_segments[seg_index++] = (unsigned char)buf[5];
@@ -328,10 +330,12 @@ PACK_RESP_BUF:
 	    resp_buf[4] = 0xf3; 
 	    resp_buf[5] = 0xff;     // reject subcode
 	    resp_buf[6] = reject_code;
-	    resp_buf[7] = buf[5];   // segment
+	    resp_buf[7] = buf[5];   // segment number
 	    resp_buf[8] = 0xff;     // packet end
-	    resp_buf[9] = 0xff;     // pad
-    } else if (data_packet) {
+	    resp_buf[9] = 0xff;     // packet end
+    }
+    else if (data_packet)
+    {
         // ACK packet
         resp_buf[0] = 0xff;     // packet start id
 	    resp_buf[1] = 0xff;
@@ -341,12 +345,14 @@ PACK_RESP_BUF:
 	    resp_buf[5] = buf[5];   // seg no
 	    resp_buf[6] = 0xff;     // packet end
 	    resp_buf[7] = 0xff;
-    }  else if (access_packet) {
+    }
+    else if (access_packet)
+    {
         resp_buf[0] = 0xff;     // packet start id
 	    resp_buf[1] = 0xff;
 	    resp_buf[2] = buf[2];   // client id
-	    //resp_buf[3] = 0xff;     // acc_OK, not paid, not exist
-	    //resp_buf[4] = 0xfb; 
+	    // resp_buf[3]
+	    // resp_buf[4]         are filled in by the access_check()
 	    resp_buf[5] = buf[5];   // seg no
 	    resp_buf[6] = 0x05;     // length of tech + subscriber number
 	    resp_buf[7] = buf[7];   // technology
@@ -363,7 +369,7 @@ PACK_RESP_BUF:
 
 /*
  * Read lines in filename. Convert phone number to same format as
- * sent by the client. Compose an array of arrays with number, tech,
+ * sent by the client. Compose an array of arrays with number, technology,
  * and paid data for each line.
  */
 static void read_file(char * filename) {
@@ -399,7 +405,6 @@ static void read_file(char * filename) {
         strcat(num_1, num_2);
         //printf("-- read_file -- num_1: %s\n", num_1);
         
-    
         // convert 4085546805 to hex
         int num_int = atoi(num_1);
         //printf("-- read_file -- num_int: %x\n", num_int);
@@ -407,7 +412,7 @@ static void read_file(char * filename) {
         char num_array[4];
         strncpy(&num_array[0], (char *)&num_int, 8);
         
-        // stuff a subscriber array of arrays to use in check_packet
+        // stuff a subscriber array of arrays to use in check_received_packet
         subscriber[i][0] = num_array[3];
         subscriber[i][1] = num_array[2];
         subscriber[i][2] = num_array[1];
@@ -486,14 +491,14 @@ int main(void)
         {
             continue;
         }
-        //print_header(buf, ACCESSHEADER, "Packet Header");
+        print_header(buf, ACCESSHEADER, "Packet Header");
 	    
 	    // count as a received packet
 	    packets_received++;
 
 	    // inspect the packet
 	    memset(resp_buf,'\0', REJECTBUFLEN);
-	    int ret = check_packet(buf, resp_buf);
+	    int ret = check_received_packet(buf, resp_buf);
 	   
 	    if (ret == EXIT) {
 	        printf("RESETING SERVER STATE.\n");
@@ -505,25 +510,14 @@ int main(void)
 	    if (ret != 0)
 	    {
 	        packet_length = REJECTBUFLEN;
-	        //print_header(resp_buf, REJECTBUFLEN, "REJECT PACKET");
-	        //printf("REJECT PACKET\n");
 	    } else {
 	        packet_length = ACKBUFLEN;
-	        //print_header(resp_buf, ACKBUFLEN, "ACK PACKET");
+	 
 	        printf("ACK PACKET\n");
 	    }
-
-/*	    if (strcmp((const char *)cmd, "y") == 0 &&
-*	            (
-*	                (unsigned char)resp_buf[5] == 0x00 || (unsigned char)resp_buf[7] == 0x00
-*	           )
-*	       )
-*	   {
-*	        printf("Sleeping 10 seconds before ACK for segment 0...\n");
-*	        sleep(10);
-*	    }
-*/	    
-       // now reply to the client with the resp_buf (ACK or REJECT)
+	    print_header(resp_buf, ACCESSHEADER, "Reply Header");
+	    
+       // now reply to the client with the resp_buf (ACK or REJECT or ACCESS)
         if (sendto(s, resp_buf, packet_length , 0, (struct sockaddr*) &si_other, slen) == -1)
         {
            die("sendto()");
